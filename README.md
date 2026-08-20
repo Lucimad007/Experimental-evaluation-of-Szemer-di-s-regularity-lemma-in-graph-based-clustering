@@ -1,0 +1,101 @@
+# Experimental Evaluation of Szemerédi's Regularity Lemma in Graph-Based Clustering
+
+A faithful Python implementation of:
+
+> Jian Hou, Juntao Ge, Huaqiang Yuan, Marcello Pelillo.
+> *Experimental evaluation of Szemerédi's regularity lemma in graph-based clustering.*
+> Pattern Recognition 171 (2026) 112205.
+
+The method partitions a similarity graph into an (approximately) regular
+partition via Szemerédi's regularity lemma, builds a small *reduced graph* that
+preserves the essential structure, clusters the reduced graph, and maps the labels
+back — reducing computation load while (per the paper) improving clustering
+accuracy on real datasets.
+
+## Project layout
+
+```
+.
+├── papers/          # local reference PDF (gitignored)
+├── spec/            # authoritative specification the code is kept in sync with
+├── src/             # implementation
+│   ├── szemeredi/        # §3.1–3.3: regularity partitioning + reduced graph
+│   ├── clustering/       # §2: SPC, SPRG, APC, DSet
+│   ├── enhanced/        # §3.4: Algorithm 1 + k-means partition baseline
+│   ├── datasets.py       # §4, Table 1: 20 UCI datasets
+│   ├── metrics.py        # §4: NMI, ACC, ARI, RI
+│   ├── experiments.py   # §4.1–4.3: experiment runners
+│   ├── baselines.py      # §4.3: recent-algorithm reference tables (Tables 2–5)
+│   ├── plotting.py       # figures (Figs. 2–11)
+│   ├── config.py         # parameter grids + dataset metadata
+│   ├── runners.py        # base-algorithm dispatch
+│   ├── main.py           # CLI entry point
+│   └── smoke_test.py     # no-network end-to-end test
+├── .reference/      # studied reference impl (gitignored, not part of project)
+├── requirements.txt
+└── README.md
+```
+
+The `spec/` folder is the source of truth: each document maps to a paper section and
+an implementation module, with a `Sync status` line. Code and spec are kept in sync.
+
+## Setup
+
+Requires Python 3.10+.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+## Usage
+
+```powershell
+# quick end-to-end test (synthetic data, no network)
+python -m src.smoke_test
+
+# CLI
+python -m src.main smoke                 # one-dataset smoke test
+python -m src.main exp1                 # §4.1 parameter influence (Figs. 2–5)
+python -m src.main exp2                 # §4.2 enhanced vs original (Figs. 7–10)
+python -m src.main exp2b                # §4.2 regularity vs k-means partitioning (Fig. 11)
+python -m src.main exp3                 # §4.3 vs recent algorithms (Tables 2–5)
+python -m src.main all                  # run all experiments
+
+# restrict scope
+python -m src.main exp1 --datasets Wine,Thyroid --algorithms SPC,APC --verbose
+```
+
+Results are written to `results/` (gitignored).
+
+## What is implemented
+
+- **Regularity partitioning** (§3.2): Alon et al. algorithm with the three
+  practical modifications from the paper — limit irregular pairs per class to ≤1,
+  degree-based greedy certificates (Fiorucci et al. 2020), terminate when
+  `k > ϵ·|V|`. Both Alon (3 conditions) and Frieze–Kannan variants.
+- **Reduced graph** (§3.3): weighted edge density via Eq. (3).
+- **Algorithm 1** (§3.4): partition → reduced graph → cluster on reduced graph →
+  map labels back, with exceptional class `V0` assigned to the nearest cluster.
+- **Base algorithms** (§2): SPC (Ng–Jordan–Weiss), SPRG (learned similarity + SPC),
+  APC (affinity propagation), DSet (dominant sets via replicator dynamics, Eq. 1).
+- **Similarity** (§4): `s(x,y)=exp(−d(x,y)/(d̄·σ))` with the σ grid.
+- **Metrics** (§4): NMI, ACC (best permutation), ARI, RI.
+- **Datasets** (§4, Table 1): 20 UCI datasets via `ucimlrepo` with local caching.
+- **Experiments** (§4.1–4.3): parameter influence, enhanced vs original,
+  regularity vs k-means partitioning, and vs recent algorithms.
+
+## Notes / scope
+
+- The regularity-partitioning core follows Alon et al. (1994) with Fiorucci et al.'s
+  greedy certificates, matching the reference `dense_graph_reducer` (studied locally
+  in `.reference/`, gitignored).
+- The 8 recent algorithms in §4.3 (3W-DPET, DenMune, FSDPC, DPC-FSC, LDP-SC,
+  KSF-DPC, ICKDP, BP) are external third-party methods; their per-dataset results
+  are used as fixed reference columns from Tables 2–5 (`src/baselines.py`), and the
+  Reg-* columns are computed here and joined against them.
+- Per the paper (§4), the enhancement does **not** work well on synthetic data
+  because regular pairs demand the random edge distribution of real datasets —
+  this is why `smoke_test` (synthetic) shows low NMI while real UCI datasets are
+  where the method shines.

@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local reference materials (PDFs, course notes)
+papers/
+
+# Cloned reference implementations (for study only, not part of project)
+.reference/
+
+# Experiment outputs
+results/
+data/
+
+# Local caches
+*.npy
+*.csv
