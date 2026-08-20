@@ -9,7 +9,8 @@ Four representative algorithms, each taking a pairwise similarity matrix as inpu
 See ``spec/base_algorithms.md``.
 """
 
-from .spectral import spc, sprg, sprg_similarity
+from .spectral import spc
+from .sprg import sprg, sprg_similarity
 from .dominant_set import dominant_sets
 from .affinity_propagation import apc
 

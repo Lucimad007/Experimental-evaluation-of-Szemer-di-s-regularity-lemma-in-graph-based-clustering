@@ -33,9 +33,9 @@ def _needs_sigma(name):
     return name in ("SPC", "APC", "DSet")
 
 
-def _graph_for(algo, X, sigma):
+def _graph_for(algo, X, sigma, n_clusters=None):
     """Original graph G for ``algo``: Gaussian(σ) for SPC/APC/DSet, learned for SPRG."""
-    return original_graph(algo, X, sigma)
+    return original_graph(algo, X, sigma, n_clusters=n_clusters)
 
 
 def _b_grid_for(n, b_grid=None):
@@ -80,7 +80,7 @@ def experiment1_parameter_influence(
         for algo in algorithms:
             sigmas = sigma_grid if _needs_sigma(algo) else [None]
             for sigma in sigmas:
-                S = _graph_for(algo, X, sigma)
+                S = _graph_for(algo, X, sigma, n_clusters)
                 bs = _b_grid_for(n, b_grid)
                 for eps in epsilon_grid:
                     for cr in compression_grid:
@@ -176,7 +176,7 @@ def experiment2_enhanced_vs_original(
             best_sigma = None
             sigmas = SIGMA_GRID if _needs_sigma(algo) else [1.0]
             for sigma in sigmas:
-                S = _graph_for(algo, X, sigma)
+                S = _graph_for(algo, X, sigma, n_clusters)
                 try:
                     t0 = time.time()
                     labels = run_original(algo, S, n_clusters, X=X)
@@ -190,7 +190,7 @@ def experiment2_enhanced_vs_original(
                     best_sigma = sigma
             if best_orig is None:
                 continue
-            S = _graph_for(algo, X, best_sigma)
+            S = _graph_for(algo, X, best_sigma, n_clusters)
             # enhanced with recommended params (best over the recommended grid)
             best_enh = None
             best_enh_nmi = -1
@@ -253,7 +253,7 @@ def experiment2b_regularity_vs_kmeans(
             best_sigma = 1.0
             best_nmi = -1
             for sigma in (SIGMA_GRID if _needs_sigma(algo) else [1.0]):
-                S = _graph_for(algo, X, sigma)
+                S = _graph_for(algo, X, sigma, n_clusters)
                 try:
                     labels, info = enhance_clustering(
                         make_base_algorithm(algo, X=X),
@@ -267,7 +267,7 @@ def experiment2b_regularity_vs_kmeans(
                 if m["nmi"] > best_nmi:
                     best_nmi = m["nmi"]
                     best_sigma = sigma
-            S = _graph_for(algo, X, best_sigma)
+            S = _graph_for(algo, X, best_sigma, n_clusters)
             try:
                 reg_labels, reg_info = enhance_clustering(
                     make_base_algorithm(algo, X=X), S,
@@ -307,7 +307,7 @@ def _best_enhanced_metrics(algo, X, y, n_clusters, verbose=False):
     best = None
     best_nmi = -1.0
     for sigma in sigmas:
-        S = _graph_for(algo, X, sigma)
+        S = _graph_for(algo, X, sigma, n_clusters)
         for eps in config.EPSILON_RECOMMENDED:
             for cr in config.COMPRESSION_RECOMMENDED:
                 for b in config.B_RECOMMENDED:

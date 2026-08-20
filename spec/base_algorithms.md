@@ -16,12 +16,32 @@ length, as in the standard formulation. `k` is set to the ground-truth number of
 clusters (consistent with the experimental protocol).
 
 **SPRG** (Hou et al., *Towards parameter-free clustering for real-world data*, PR
-2023). A spectral-clustering variant that *learns* the similarity matrix by combining
-subtle similarities in discriminative feature subspaces, instead of using the
-Gaussian similarity. It does **not** use the `σ` parameter. The paper notes it
-performs much better than NCut but at a much larger computation cost. We implement a
-faithful iterative similarity-learning + spectral clustering pipeline (see
-`src/clustering/spectral.py`).
+2023). A spectral-clustering variant that *learns* a structured similarity matrix
+instead of using the Gaussian similarity. It does **not** use the `σ` parameter.
+The paper notes it performs much better than NCut but at a much larger computation
+cost. SPRG is built on the **Constrained Laplacian Rank (CLR)** model (Nie, Wang,
+Jordan & Huang, AAAI 2016), which learns a non-negative, row-stochastic affinity
+`S` whose Laplacian `L_S = D_S − (Sᵀ+S)/2` has rank `n − k` — i.e. `S` has exactly
+`k` connected components. CLR (L2) solves
+
+```
+min_S  ‖S − A‖_F²   s.t.  S ≥ 0,  S 1 = 1,  rank(L_S) = n − k
+```
+
+by alternating (Ky Fan's theorem): (1) `F ←` `k` smallest eigenvectors of `L_S`;
+(2) for each row `i`, `s_i ← Π_Δ(a_i − (λ/2) v_i)` where `v_ij = ‖f_i−f_j‖²/2` and
+`Π_Δ` is the projection onto the probability simplex. The initial affinity `A`
+follows Eq. (35) of Nie et al. (an m-NN, distance-consistent, scale-invariant
+graph). The cluster labels are the connected components of the learned `S`
+(no k-means). `k` is the ground-truth cluster count.
+
+Implementation: `src/clustering/sprg.py` (`clr_learn`, `sprg_similarity`, `sprg`).
+Only the `k+1` smallest eigenpairs are computed per iteration (dense partial
+`eigh` for small `n`, Lanczos `eigsh` for large `n`). If the λ-heuristic stops
+early without exactly `k` components on very large graphs, `sprg` falls back to
+spectral clustering on the learned affinity so it always returns `k` labels
+(documented deviation, see `IMPLEMENTATION_PROOF.md`). SPRG-specific tweaks
+beyond the published CLR basis are not in the public text.
 
 ## 2.2 Affinity propagation clustering (APC)
 

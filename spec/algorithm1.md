@@ -50,6 +50,24 @@ Output: labels of n data l_i, i = 1, …, n
   mapped back: every vertex in `V_j` gets label `L_j` (Steps 20–24). Vertices in the
   exceptional class `V0` are assigned to the nearest cluster (Steps 25–27).
 
+### Note on the break criterion (code vs literal pseudocode)
+
+The paper states two related but distinct stopping rules:
+- §3.2 Step 3 (the *formal* regular-partition criterion): stop when the number
+  of irregular pairs is `≤ ε·C(k,2)`.
+- §3.4 Algorithm 1 Step 12 (the *approximate* criterion): `Break` when
+  `n_ir < k_i(k_i−1)/2` (i.e. at least one pair is regular).
+
+Under modification (1) ("at most one irregular pair per class"), `n_ir ≤ k/2`,
+so for `k ≥ 3` we always have `n_ir ≤ k/2 < k(k−1)/2` — the literal Algorithm 1
+criterion would therefore break on the first iteration and never refine,
+contradicting the paper's experimental results (where `k` grows to ~16–64). The
+implementation instead uses the **formal §3.2 criterion** `n_ir ≤ ε·C(k,2)` (in
+`check_partition_regularity`), matching the Fiorucci et al. reference implementation
+the paper says it follows. This is the defensible, behaviour-faithful choice; the
+partition still stops via modification (3) (compression) when `k ≥ ϵ·n`, exactly as
+the paper describes ("approximately, not provably, regular").
+
 ## "Nearest cluster" for V0
 
 The paper states this is "trivial" and that `V0` is typically small so the method has

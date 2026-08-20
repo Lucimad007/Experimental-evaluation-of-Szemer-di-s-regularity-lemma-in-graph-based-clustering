@@ -32,8 +32,9 @@ CR_DEMO = (0.03, 0.05)
 B_DEMO = (4, 8)
 
 
-def _graph(algo, X, sigma):
-    return sprg_similarity(X) if algo == "SPRG" else gaussian_similarity(X, sigma)
+def _graph(algo, X, sigma, n_clusters=None):
+    return (sprg_similarity(X, n_clusters) if algo == "SPRG"
+            else gaussian_similarity(X, sigma))
 
 
 def main():
@@ -49,7 +50,7 @@ def main():
             # original: best over a small σ sweep (SPRG ignores σ)
             best_o = None
             for sigma in (SIGMA_DEMO if algo != "SPRG" else (1.0,)):
-                S = _graph(algo, X, sigma)
+                S = _graph(algo, X, sigma, k)
                 try:
                     lo = run_original(algo, S, k if algo in ("SPC", "SPRG") else None, X=X)
                     mo = evaluate(y, lo)
@@ -60,7 +61,7 @@ def main():
             if best_o is None:
                 continue
             mo, best_sigma = best_o
-            S = _graph(algo, X, best_sigma)
+            S = _graph(algo, X, best_sigma, k)
             # enhanced: best over a small (ε, ϵ, b) sweep
             best_e = None
             for eps in EPS_DEMO:

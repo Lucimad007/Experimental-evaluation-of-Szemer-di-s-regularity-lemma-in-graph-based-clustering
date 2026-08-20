@@ -37,17 +37,19 @@ def make_base_algorithm(name, X=None):
     raise ValueError(f"unknown base algorithm: {name}")
 
 
-def original_graph(name, X, sigma=None):
+def original_graph(name, X, sigma=None, n_clusters=None):
     """Return the original graph ``G`` (similarity matrix) for ``name``.
 
     For SPC/APC/DSet this is the Gaussian similarity with parameter ``sigma``.
-    For SPRG this is the SPRG-learned similarity (no ``sigma``); ``sigma`` is
-    ignored.
+    For SPRG this is the SPRG-learned structured affinity (CLR); ``n_clusters``
+    (the ground-truth k) is required and ``sigma`` is ignored.
     """
     from .enhanced.similarity import gaussian_similarity
 
     if name == "SPRG":
-        return sprg_similarity(X)
+        if n_clusters is None:
+            raise ValueError("SPRG requires n_clusters to learn its affinity")
+        return sprg_similarity(X, n_clusters)
     return gaussian_similarity(X, sigma)
 
 
