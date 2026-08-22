@@ -1,201 +1,304 @@
-"""SPRG: structured affinity learning via the Constrained Laplacian Rank (CLR) model.
+"""SPRG: spectral clustering on a clustering-random-forest affinity.
 
-SPRG (Hou, Yuan, Pelillo, *Towards parameter-free clustering for real-world
-data*, Pattern Recognition 134:109062, 2023) learns a structured affinity
-matrix with exactly k connected components, built on the Constrained Laplacian
-Rank algorithm (Nie, Wang, Jordan, Huang, AAAI 2016).
+SPRG is the algorithm of Zhu, Loy & Gong, "Constructing robust affinity graphs
+for spectral clustering" (CVPR 2014) — reference **[20]** of the main paper
+(also cited as "SPRG" in Hou et al., PR 2023 [25] of the main paper). The main
+paper describes it as "a variant of SPC" that "learns the similarity by
+combining subtle similarity in discriminative feature subspaces" and does not
+involve the parameter σ.
 
-CLR (L2-norm) solves:
+Method (all equation numbers from Zhu–Loy–Gong):
 
-    min_{S}  ||S - A||_F^2   s.t.  S >= 0,  S 1 = 1,  rank(L_S) = n - k
+1. **Clustering forest** (Sec. 3.1): an ensemble of ``Tclust`` binary decision
+   trees, each trained on a training set ``Xt ⊂ X`` drawn randomly from the
+   data, unsupervised via the pseudo two-class algorithm (Liu–Xia–Yu): a
+   synthetic sample set drawn uniformly in the feature bounding box is labelled
+   class 1, the real samples class 0, and a classification tree (Gini
+   information gain, Eq. 3) is learned. At each split node the optimal
+   parameter ``ϑ*`` (Eq. 2) is searched greedily over ``mtry`` randomly
+   selected features (``mtry = √d``) and the ``|S|−1`` mid-point thresholds of
+   the arriving samples. Splitting stops when the number of arriving real
+   samples is ≤ ``φ``.
 
-where L_S = D_S - (S^T + S)/2 is the Laplacian and A is an initial affinity.
-By Ky Fan's theorem, rank(L_S) = n - k  <=>  the k smallest eigenvalues of L_S
-are zero, so the problem is solved by alternating:
+2. **Structure-aware affinity** (Sec. 3.2, Eq. 7): for a sample pair
+   ``(xi, xj)`` channelled through a tree, let ``λ`` be the number of internal
+   tree nodes their paths share (the root is not counted) and ``M =
+   max(|Pi|, |Pj|) − 1`` the number of non-root nodes on the longer path
+   (internal nodes + leaf). The tree-level similarity is
 
-    1. (fix S) F <- k eigenvectors of L_S for the k smallest eigenvalues;
-    2. (fix F) for each i, s_i <- argmin_{s_i>=0, s_i^T 1 = 1} ||s_i - q_i||^2,
-       where q_i = a_i - (lam/2) v_i and v_ij = ||f_i - f_j||^2 / 2
-       (this is the projection of q_i onto the probability simplex).
+       a^t_ij = ( Σ_{κ=1..λ} w_κ ) / ( Σ_{κ=1..M} w_κ )
 
-The number of clusters k is the ground truth; the cluster labels are the
-connected components of the learned S (no k-means post-processing).
-The initial affinity A follows Eq. (35) of Nie et al. (an m-nearest-neighbour,
-distance-consistent, scale-invariant graph).
+   with node-weight variants:
+   - ``"adpt"`` (ClustRF-Strct-Adpt, Eq. 12–13, best in the paper's
+     experiments — default): ``w_κ = 1/|S_κ|`` for internal nodes and
+     ``w = 1/|Λ_b̂|`` for the leaf of the longer path;
+   - ``"unfm"`` (ClustRF-Strct-Unfm, Eq. 11): all weights 1, i.e.
+     ``a^t_ij = λ / (max(|Pi|, |Pj|) − 1)``;
+   - ``"bi"`` (ClustRF-Bi, Eq. 9–10): 1 iff the two samples share a leaf.
 
-See ``spec/base_algorithms.md``. This is faithful to the published CLR basis
-of SPRG; SPRG-specific tweaks beyond CLR are not in the public text.
+3. **Forest consensus** (Eq. 8): ``A = (1/Tclust) Σ_t A^t``.
+
+4. **Clustering**: spectral clustering (the paper's SPC — unnormalized
+   Laplacian, k smallest eigenvectors, k-means on the rows) on ``A`` with the
+   ground-truth number of clusters ``k``.
+
+Paper-silent implementation choices (documented in IMPLEMENTATION_PROOF.md):
+``Tclust = 1000`` (paper Sec. 4), ``mtry = √d`` (paper Sec. 4), the per-tree
+training set is a bootstrap sample, ``φ = 5``, the "adpt" variant as default,
+and a fixed seed (the paper averages over 5 trials; we fix one for
+reproducibility).
 """
 
 import numpy as np
-from scipy.linalg import eigh as _eigh_subset
-from scipy.sparse.linalg import eigsh as _eigsh
-from scipy.sparse.linalg import LinearOperator
-from scipy.sparse.csgraph import connected_components
+import scipy.sparse
+
+from .. import config
+from .spectral import spc
 
 
-def _smallest_eigh(L, k):
-    """Return the (k+1) smallest eigenpairs of a dense symmetric PSD matrix L.
+# --------------------------------------------------------------------------- #
+# Clustering decision tree (pseudo two-class, Gini gain)
+# --------------------------------------------------------------------------- #
+def _best_split(values, labels):
+    """Greedy split search on one feature: Gini-gain-best mid-point threshold.
 
-    Uses a dense partial `eigh` for small n and Lanczos (`eigsh`) for large n,
-    so the cost stays O(n^2 k) rather than O(n^3) when n is large.
+    ``values``/``labels`` are the arriving samples' feature values and pseudo
+    class labels (0 = real, 1 = synthetic). Returns ``(threshold, gain)`` with
+    ``threshold = None`` if no valid split exists.
     """
-    n = L.shape[0]
-    n_eval = min(k + 1, n)
-    if n <= 1500 or n_eval >= n:
-        evals, evecs = _eigh_subset(L, subset_by_index=[0, n_eval - 1])
-        return evals, evecs
-    ncv = min(n, 2 * n_eval + 20)
-    LO = LinearOperator((n, n), matvec=lambda x: L @ x, dtype=L.dtype)
-    evals, evecs = _eigsh(LO, k=n_eval, which="SA", ncv=ncv, tol=1e-6)
-    order = np.argsort(evals)
-    return evals[order], evecs[:, order]
+    order = np.argsort(values, kind="stable")
+    v = values[order]
+    y = labels[order]
+    m = v.size
+    if m < 2 or v[0] == v[-1]:
+        return None, -np.inf
+
+    n1 = y.sum()
+    p1 = n1 / m
+    gini_s = 2.0 * p1 * (1.0 - p1)
+
+    cs1 = np.cumsum(y)
+    k = np.arange(1, m)                       # split after position k-1: |L| = k
+    # valid only where consecutive values differ (mid-points, |S|-1 candidates)
+    valid = v[:-1] < v[1:]
+
+    p1_l = cs1[:-1] / k
+    p1_r = (n1 - cs1[:-1]) / (m - k)
+    gini_l = 2.0 * p1_l * (1.0 - p1_l)
+    gini_r = 2.0 * p1_r * (1.0 - p1_r)
+    gain = np.where(valid, gini_s - (k / m) * gini_l - ((m - k) / m) * gini_r, -np.inf)
+
+    best = np.argmax(gain)
+    if not np.isfinite(gain[best]):
+        return None, -np.inf
+    threshold = (v[best] + v[best + 1]) / 2.0
+    return threshold, gain[best]
 
 
+class _Tree:
+    """One clustering decision tree; stores nodes and per-sample paths.
 
-def _initial_affinity(X, m=5):
-    """CLR initial graph (Nie et al. Eq. 35).
+    Nodes are stored in parallel arrays; node 0 is the root. ``paths[i]`` is the
+    list of internal-node ids (root excluded) traversed by sample i, and
+    ``leaf_size[i]`` the number of real training samples in i's leaf.
+    """
 
-    m-nearest-neighbour, distance-consistent, scale-invariant affinity:
-        a_ij = (e_{i,m+1} - e_ij) / (m*e_{i,m+1} - sum_{h=1}^m e_ih)  for j among the m nearest of i
-        a_ij = 0                                                otherwise
-    where e_ij = ||x_i - x_j||^2 / 2 (half squared distance), the m nearest
-    neighbours of i exclude self, and a_ii = 0.
+    def __init__(self, feature, threshold, left, right, n_real, paths, leaf_ids, leaf_sizes):
+        self.feature = feature
+        self.threshold = threshold
+        self.left = left
+        self.right = right
+        self.n_real = n_real
+        self.paths = paths
+        self.leaf_ids = leaf_ids
+        self.leaf_sizes = leaf_sizes
+
+
+def _train_tree(X, rng, mtry, min_samples_leaf):
+    """Train one clustering tree on a bootstrap sample of ``X``.
+
+    Pseudo two-class construction: the bootstrap real samples are labelled 0
+    and an equally sized synthetic set, uniform in the bootstrap's per-feature
+    bounding box, is labelled 1. A Gini-gain classification tree is grown on
+    the mixture; ``n_real[u]`` records the number of real training samples
+    arriving at node ``u`` (the ``|S_κ|`` of Eq. 12). The tree is grown with an
+    explicit stack so deep trees cannot hit Python's recursion limit.
+    """
+    n, d = X.shape
+    boot = rng.integers(0, n, size=n)
+    Xb = X[boot]
+    lo, hi = Xb.min(0), Xb.max(0)
+    Xsyn = rng.uniform(lo, hi, size=(n, d))
+    feats = np.vstack([Xb, Xsyn])             # real first, synthetic last
+    labels = np.concatenate([np.zeros(n, dtype=int), np.ones(n, dtype=int)])
+
+    feature, threshold, left, right, n_real = [], [], [], [], []
+
+    def new_node(arriving):
+        node = len(feature)
+        feature.append(0), threshold.append(0.0), left.append(-1), right.append(-1)
+        n_real.append(int((arriving < n).sum()))
+        return node
+
+    def try_split(node, idx):
+        """Find the Gini-best split for node ``node``; wire children if found."""
+        if n_real[node] <= min_samples_leaf:
+            return
+        feats_idx = rng.choice(d, size=min(mtry, d), replace=False)
+        sub = feats[idx]
+        best_gain, best_f, best_t = -np.inf, None, None
+        for f in feats_idx:
+            t, g = _best_split(sub[:, f], labels[idx])
+            if t is not None and g > best_gain:
+                best_gain, best_f, best_t = g, f, t
+        if best_f is None:
+            return
+        mask = sub[:, best_f] < best_t
+        if mask.all() or not mask.any():
+            return
+        feature[node], threshold[node] = best_f, best_t
+        for is_left, m_ in ((True, mask), (False, ~mask)):
+            child = new_node(idx[m_])
+            if is_left:
+                left[node] = child
+            else:
+                right[node] = child
+            stack.append((child, idx[m_]))
+
+    root = new_node(np.arange(2 * n))
+    stack = [(root, np.arange(2 * n))]
+    while stack:
+        node, idx = stack.pop()
+        try_split(node, idx)
+
+    # route every sample of X through the tree
+    paths, leaf_ids, leaf_sizes = [], [], []
+    for i in range(n):
+        node, path = 0, []
+        while left[node] != -1 or right[node] != -1:
+            path.append(node)
+            node = left[node] if X[i, feature[node]] < threshold[node] else right[node]
+        paths.append(path)
+        leaf_ids.append(node)
+        leaf_sizes.append(n_real[node])       # |Λ|: real training samples in the leaf
+
+    return _Tree(feature, threshold, left, right, n_real, paths, leaf_ids, leaf_sizes)
+
+
+# --------------------------------------------------------------------------- #
+# Forest affinity (Eq. 7-13)
+# --------------------------------------------------------------------------- #
+def _tree_affinity(tree, n, variant):
+    """Tree-level affinity matrix ``A^t`` for one tree (Eq. 7)."""
+    if variant == "bi":
+        leaf = np.asarray(tree.leaf_ids)
+        return (leaf[:, None] == leaf[None, :]).astype(float)
+
+    depth = np.array([len(p) for p in tree.paths], dtype=float)
+    n_nodes = len(tree.feature)
+    w = np.ones(n_nodes) if variant == "unfm" else np.array(
+        [1.0 / nr if nr > 0 else 0.0 for nr in tree.n_real]
+    )
+
+    # P[i, u] = w_u for the internal nodes u (root excluded) on i's path;
+    # numerator(i, j) = Σ w_u over the internal nodes shared by i and j
+    rows = np.concatenate([np.full(len(p), i, dtype=int) for i, p in enumerate(tree.paths)])
+    cols = np.concatenate([np.asarray(p, dtype=int) for p in tree.paths])
+    if cols.size:
+        P = scipy.sparse.csr_matrix((w[cols], (rows, cols)), shape=(n, n_nodes))
+        numerator = np.asarray((P @ P.T).todense())
+        path_weight = np.asarray(P.sum(axis=1)).ravel()
+    else:                                       # single-leaf tree
+        numerator = np.zeros((n, n))
+        path_weight = np.zeros(n)
+
+    if variant == "unfm":
+        denom = depth + 1.0                    # internal nodes + leaf (weight 1)
+    else:  # adpt: Σ 1/|S_κ| over i's internal nodes + 1/|Λ(i)|
+        denom = path_weight + np.array(
+            [1.0 / ls if ls > 0 else 0.0 for ls in tree.leaf_sizes]
+        )
+
+    # b̂ = argmax_{b∈{i,j}} |P_b| (Eq. 14): the longer path; ties -> i
+    longer_is_i = depth[:, None] >= depth[None, :]
+    denom_mat = np.where(longer_is_i, denom[:, None], denom[None, :])
+    denom_mat = np.where(denom_mat > 0, denom_mat, 1e-12)
+    return numerator / denom_mat
+
+
+def forest_affinity(X, n_trees=None, variant=None, mtry=None,
+                    min_samples_leaf=None, random_state=314, verbose=False):
+    """Clustering-random-forest pairwise affinity (Zhu–Loy–Gong, Eq. 8).
+
+    Parameters
+    ----------
+    X : np.ndarray (n, d)
+        Feature matrix.
+    n_trees : int
+        Forest size ``Tclust`` (default ``config.SPRG_TREES`` = 1000, the paper's
+        setting; reduce for smoke/demo runs).
+    variant : str
+        Node-weighting variant: ``"adpt"`` (default, ``config.SPRG_VARIANT``),
+        ``"unfm"`` or ``"bi"``.
+    mtry : int or None
+        Number of candidate features per split (paper: ``√d``).
+    min_samples_leaf : int
+        Splitting stops when ≤ ``φ`` real samples arrive at a node (the paper
+        selects ``φ`` by cross-validation; ``config.SPRG_MIN_LEAF`` = 5 is our
+        documented default).
     """
     X = np.asarray(X, dtype=float)
-    n = X.shape[0]
-    m = min(m, n - 2)                       # need >= m+1 non-self neighbours
-    if m < 1:
-        return np.zeros((n, n))
-    # half squared distances via the Gram form (avoids an n*n*d temporary)
-    sq = (X * X).sum(1)
-    D2 = 0.5 * (sq[:, None] + sq[None, :] - 2.0 * (X @ X.T))
-    np.fill_diagonal(D2, 0.0)
-    D2 = np.maximum(D2, 0.0)
-    order = np.argsort(D2, axis=1)          # order[i,0] == i (self, dist 0)
-    nn = order[:, 1:m + 1]                   # m nearest of i, excluding self
-    e_nn = np.take_along_axis(D2, nn, axis=1)
-    e_im1 = D2[np.arange(n), order[:, m + 1]]   # (m+1)-th nearest (excl self)
-    denom = m * e_im1 - e_nn.sum(1)
-    denom = np.where(denom > 0, denom, 1e-12)
-    vals = (e_im1[:, None] - e_nn) / denom[:, None]
+    n, d = X.shape
+    if n_trees is None:
+        n_trees = config.SPRG_TREES
+    if variant is None:
+        variant = config.SPRG_VARIANT
+    if min_samples_leaf is None:
+        min_samples_leaf = config.SPRG_MIN_LEAF
+    if mtry is None:
+        mtry = max(1, int(round(np.sqrt(d))))
+    rng = np.random.default_rng(random_state)
+
     A = np.zeros((n, n))
-    np.put_along_axis(A, nn, vals, axis=1)
-    np.fill_diagonal(A, 0.0)
-    return A
+    for t in range(n_trees):
+        tree = _train_tree(X, rng, mtry, min_samples_leaf)
+        A += _tree_affinity(tree, n, variant)
+        if verbose and (t + 1) % max(1, n_trees // 10) == 0:
+            print(f"  [forest] tree {t + 1}/{n_trees}")
+    A /= n_trees
+    return (A + A.T) / 2.0
 
 
-def _laplacian(S):
-    """L_S = D_S - (S^T + S)/2 (symmetrized Laplacian); also returns symmetrized S."""
-    Ssym = (S + S.T) / 2.0
-    d = Ssym.sum(1)
-    return np.diag(d) - Ssym, Ssym
+# --------------------------------------------------------------------------- #
+# SPRG entry points
+# --------------------------------------------------------------------------- #
+def sprg_similarity(X, n_clusters=None, **kwargs):
+    """SPRG-learned affinity matrix (the graph G for SPRG).
 
-
-def _project_simplex(q):
-    """Project q onto {s >= 0, sum(s) = 1} (Wang & Carreira-Perpinan / Duchi)."""
-    n = q.size
-    if n == 0:
-        return q
-    u = np.sort(q)[::-1]
-    cssv = np.cumsum(u) - 1.0
-    idx = np.nonzero(u > cssv / np.arange(1, n + 1))[0]
-    rho = idx[-1] if idx.size else 0
-    theta = cssv[rho] / (rho + 1)
-    return np.maximum(q - theta, 0.0)
-
-
-def _project_simplex_rows(Q):
-    """Project each row of Q (n x m) onto the probability simplex (vectorized)."""
-    n, m = Q.shape
-    u = np.sort(Q, axis=1)[:, ::-1]
-    cssv = np.cumsum(u, axis=1) - 1.0
-    div = np.arange(1, m + 1)
-    rho = (u > cssv / div).sum(axis=1) - 1            # last index where u_j > cssv_j/j
-    rho = np.clip(rho, 0, m - 1)
-    theta = (cssv[np.arange(n), rho] / (rho + 1.0))[:, None]
-    return np.maximum(Q - theta, 0.0)
-
-
-
-def clr_learn(X, k, m=10, lam=0.1, max_iter=20, tol=1e-6, verbose=False):
-    """CLR L2 learning of a structured affinity with exactly k connected components.
-
-    Returns the learned similarity matrix S (n x n, nonneg, row-stochastic, k components).
-
-    Only the k+1 smallest eigenpairs of the Laplacian are computed each iteration
-    (MRRR driver), so the cost is roughly O(n^2 k) rather than O(n^3).
+    The forest does not depend on the number of clusters; ``n_clusters`` is
+    accepted for signature compatibility and ignored.
     """
-    X = np.asarray(X, dtype=float)
-    n = X.shape[0]
-    A = _initial_affinity(X, m=m)
-    np.fill_diagonal(A, 0.0)
-
-    # initialize F with k smallest eigenvectors of L_A
-    L_A, _ = _laplacian(A)
-    _, F = _smallest_eigh(L_A, k)
-    F = F[:, :k]
-
-    S = (A + A.T) / 2.0
-    S = np.clip(S, 0.0, None)
-    rs = S.sum(1, keepdims=True)
-    S = S / np.where(rs > 0, rs, 1e-12)
-
-    eps_zero = 1e-6
-    for _it in range(max_iter):
-        S_old = S
-        # 1. update each row of S: s_i <- project( a_i - (lam/2) v_i ) onto the simplex
-        # v_ij = ||f_i - f_j||^2 / 2  computed via the Gram form to avoid an n*n*k temporary
-        G = F @ F.T
-        p = np.diag(G)
-        V = 0.5 * (p[:, None] + p[None, :] - 2.0 * G)
-        Q = A - (lam / 2.0) * V
-        S = _project_simplex_rows(Q)
-        np.fill_diagonal(S, 0.0)
-        # 2. update F = k smallest eigenvectors of L_S
-        L_S, Ssym = _laplacian(S)
-        evals, evecs = _smallest_eigh(L_S, k)
-        F = evecs[:, :k]
-        # lambda heuristic (Nie et al.): adjust lam so that #zero eigenvalues of L_S == k
-        n_zero = int((evals < eps_zero).sum())
-        if n_zero > k:
-            lam /= 2.0
-        elif n_zero < k:
-            lam *= 2.0
-        if verbose:
-            print(f"  iter={_it} n_zero={n_zero} lam={lam:.4g} "
-                  f"diff={np.linalg.norm(S - S_old):.2e}")
-        if np.linalg.norm(S - S_old) < tol and n_zero == k:
-            break
-    return S
+    return forest_affinity(X, **kwargs)
 
 
-def sprg_similarity(X, k, m=10, **kwargs):
-    """SPRG-learned structured affinity matrix (the graph G for SPRG).
+def sprg(X, n_clusters, **kwargs):
+    """SPRG: forest affinity + spectral clustering with ``n_clusters`` clusters."""
+    A = forest_affinity(X, **kwargs)
+    return spc(A, n_clusters)
 
-    Returns the symmetrized learned similarity (so it is a valid undirected
-    graph for the regularity-partitioning step).
+
+def sprg_on_graph(sim_mat, n_clusters, min_samples_leaf=None, **kwargs):
+    """SPRG on a graph whose only representation is a similarity matrix.
+
+    Used for Reg-SPRG (Algorithm 1 line 19: "perform graph-based clustering on
+    R"): the reduced graph R has no feature vectors, so each vertex is
+    represented by its similarity profile (its row of R) and the clustering
+    forest is grown on those k-dimensional profiles. ``min_samples_leaf``
+    defaults to 1 here because R typically has far fewer vertices than a
+    dataset has points (with the dataset-level φ = 5 a small R would yield a
+    single-leaf forest and a zero affinity).
     """
-    S = clr_learn(X, k, m=m, **kwargs)
-    return (S + S.T) / 2.0
-
-
-def sprg(X, n_clusters, m=10, random_state=314, **kwargs):
-    """SPRG: learn a structured affinity with exactly n_clusters connected
-    components (CLR) and return the component labels.
-
-    By construction (the CLR rank constraint) the learned S has exactly
-    n_clusters connected components once the lambda heuristic converges. On
-    very large graphs the heuristic may stop early with a different number of
-    components; in that case we fall back to spectral clustering (k-means on the
-    spectral embedding of the learned affinity) so SPRG always returns exactly
-    n_clusters labels (documented deviation, see ``IMPLEMENTATION_PROOF.md``).
-    """
-    S = clr_learn(X, n_clusters, m=m, **kwargs)
-    Ssym = (S + S.T) / 2.0
-    ncomp, labels = connected_components(Ssym > 0, directed=False)
-    if ncomp == n_clusters:
-        return labels
-    from .spectral import spc
-    return spc(Ssym, n_clusters, random_state=random_state)
-
+    R = np.asarray(sim_mat, dtype=float)
+    if min_samples_leaf is None:
+        min_samples_leaf = 1
+    return sprg(R, n_clusters, min_samples_leaf=min_samples_leaf, **kwargs)

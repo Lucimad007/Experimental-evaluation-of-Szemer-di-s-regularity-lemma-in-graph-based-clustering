@@ -19,6 +19,14 @@ SIGMA_GRID = (0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0)
 # Base algorithms
 BASE_ALGORITHMS = ("SPC", "APC", "DSet", "SPRG")
 
+# SPRG (Zhu–Loy–Gong CVPR 2014, ref [20]) settings. The paper uses Tclust=1000
+# trees and mtry=√d; the node-weighting variant "adpt" (ClustRF-Strct-Adpt,
+# the paper's best) and φ=5 are documented paper-silent choices. Reduce
+# SPRG_TREES for faster smoke/demo runs.
+SPRG_TREES = 1000
+SPRG_VARIANT = "adpt"
+SPRG_MIN_LEAF = 5
+
 # Datasets (Table 1): name -> (NP, ND, NC)
 DATASETS = {
     "Thyroid":      (215,   5,   3),
