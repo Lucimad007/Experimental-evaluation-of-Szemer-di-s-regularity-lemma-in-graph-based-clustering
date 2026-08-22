@@ -13,7 +13,6 @@ This is the degree-based refinement from Fiorucci et al.'s
 """
 
 import random
-import sys
 
 import numpy as np
 
@@ -94,7 +93,8 @@ def degree_based(self):
 
     C0_cardinality = int(np.sum(self.classes == 0))
     if C0_cardinality > self.epsilon * self.N:
-        sys.exit(
-            "Error: not enough nodes in C0 to create a new class. "
-            "Try to increase epsilon or decrease the number of nodes in the graph"
+        raise RuntimeError(
+            "V0 exceeded the epsilon*n bound (not enough nodes in C0 to create "
+            "a new class). Try to increase epsilon or decrease the number of "
+            "nodes in the graph"
         )

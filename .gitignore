@@ -221,6 +221,9 @@ __marimo__/
 papers/
 references/
 
+# ZCode session artifacts
+.zcode/
+
 # Cloned reference implementations (for study only, not part of project)
 .reference/
 

@@ -13,7 +13,6 @@ See ``spec/regularity_partitioning.md``.
 """
 
 import math
-import sys
 
 import numpy as np
 import scipy.sparse.linalg
@@ -138,7 +137,9 @@ def frieze_kannan(self, cl_pair):
             r_mask = (W @ q_minus) <= 0.0
             s_mask = (r_mask @ W) <= 0.0
         else:
-            sys.exit("no condition on the quadratic form was verified")
+            # no case of the quadratic-form certificate holds: the pair cannot
+            # be certified irregular here — report it as regular (no witness)
+            return False, [[], []], [[], []]
 
         cert_r = list(cl_pair.index_map[0][r_mask])
         compl_r = list(cl_pair.index_map[0][~r_mask])

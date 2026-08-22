@@ -188,11 +188,17 @@ def _train_tree(X, rng, mtry, min_samples_leaf):
 # --------------------------------------------------------------------------- #
 # Forest affinity (Eq. 7-13)
 # --------------------------------------------------------------------------- #
-def _tree_affinity(tree, n, variant):
-    """Tree-level affinity matrix ``A^t`` for one tree (Eq. 7)."""
+def _accumulate_tree_affinity(A, tree, n, variant, block=1024):
+    """Add one tree's affinity matrix (Eq. 7) into ``A`` in place.
+
+    The numerator ``(P Pᵀ)`` is evaluated row-block by row-block so no full
+    n×n temporary is materialised (USPS has n = 11000; a dense temporary would
+    be ~1 GB per tree).
+    """
     if variant == "bi":
         leaf = np.asarray(tree.leaf_ids)
-        return (leaf[:, None] == leaf[None, :]).astype(float)
+        A += leaf[:, None] == leaf[None, :]
+        return
 
     depth = np.array([len(p) for p in tree.paths], dtype=float)
     n_nodes = len(tree.feature)
@@ -204,13 +210,10 @@ def _tree_affinity(tree, n, variant):
     # numerator(i, j) = Σ w_u over the internal nodes shared by i and j
     rows = np.concatenate([np.full(len(p), i, dtype=int) for i, p in enumerate(tree.paths)])
     cols = np.concatenate([np.asarray(p, dtype=int) for p in tree.paths])
-    if cols.size:
-        P = scipy.sparse.csr_matrix((w[cols], (rows, cols)), shape=(n, n_nodes))
-        numerator = np.asarray((P @ P.T).todense())
-        path_weight = np.asarray(P.sum(axis=1)).ravel()
-    else:                                       # single-leaf tree
-        numerator = np.zeros((n, n))
-        path_weight = np.zeros(n)
+    if cols.size == 0:                         # single-leaf tree: zero numerator
+        return
+    P = scipy.sparse.csr_matrix((w[cols], (rows, cols)), shape=(n, n_nodes))
+    path_weight = np.asarray(P.sum(axis=1)).ravel()
 
     if variant == "unfm":
         denom = depth + 1.0                    # internal nodes + leaf (weight 1)
@@ -218,12 +221,16 @@ def _tree_affinity(tree, n, variant):
         denom = path_weight + np.array(
             [1.0 / ls if ls > 0 else 0.0 for ls in tree.leaf_sizes]
         )
+    denom = np.where(denom > 0, denom, 1e-12)
 
     # b̂ = argmax_{b∈{i,j}} |P_b| (Eq. 14): the longer path; ties -> i
-    longer_is_i = depth[:, None] >= depth[None, :]
-    denom_mat = np.where(longer_is_i, denom[:, None], denom[None, :])
-    denom_mat = np.where(denom_mat > 0, denom_mat, 1e-12)
-    return numerator / denom_mat
+    for i0 in range(0, n, block):
+        i1 = min(i0 + block, n)
+        numerator = np.asarray((P[i0:i1] @ P.T).todense())
+        denom_mat = np.where(
+            depth[i0:i1, None] >= depth[None, :], denom[i0:i1, None], denom[None, :]
+        )
+        A[i0:i1] += numerator / denom_mat
 
 
 def forest_affinity(X, n_trees=None, variant=None, mtry=None,
@@ -262,7 +269,7 @@ def forest_affinity(X, n_trees=None, variant=None, mtry=None,
     A = np.zeros((n, n))
     for t in range(n_trees):
         tree = _train_tree(X, rng, mtry, min_samples_leaf)
-        A += _tree_affinity(tree, n, variant)
+        _accumulate_tree_affinity(A, tree, n, variant)
         if verbose and (t + 1) % max(1, n_trees // 10) == 0:
             print(f"  [forest] tree {t + 1}/{n_trees}")
     A /= n_trees
