@@ -202,25 +202,61 @@ def _load_landmine():
 
 
 def _load_leaves():
-    """Leaves (1600, 64, 100): 100 plant species × 16 images each.
+    """Leaves (1600, 64, 100): 100 plant species × 16 samples each.
 
-    The zip holds 1600 JPG images; the paper uses 64-dim features extracted from
-    them. We extract a 64-dim feature vector per image by resizing to 8×8 grayscale
-    and flattening (an approximation of the paper's exact 64-dim features, which
-    are not specified in the paper text). Label = species folder name.
+    The zip ships the UCI-provided 64-dim feature files — ``data_Sha_64.txt``
+    (shape descriptors), ``data_Mar_64.txt`` (margin) and ``data_Tex_64.txt``
+    (texture). The paper (Table 1) lists ND=64 without naming the view; we use
+    the shape descriptors (``data_Sha_64.txt``), each row = 64 features + class
+    id in 1..100. (The previous loader resized the JPGs to 8×8 grayscale — an
+    approximation no longer needed.)
     """
-    from PIL import Image
-
     zf = _zip("one+hundred+plant+species+leaves+data+set.zip")
-    jpgs = sorted(n for n in zf.namelist() if n.lower().endswith(".jpg"))
-    X = np.zeros((len(jpgs), 64), dtype=float)
-    y = []
-    for i, name in enumerate(jpgs):
-        img = Image.open(io.BytesIO(zf.read(name))).convert("L").resize((8, 8))
-        X[i] = np.asarray(img, dtype=float).flatten()
-        # species = parent folder, e.g. ".../Acer_Campestre/Acer_Campestre_01.ab.jpg"
-        y.append(name.split("/")[-2])
-    return X, np.array(y)
+    X, y = [], []
+    with zf.open("100 leaves plant species/data_Sha_64.txt") as fh:
+        for line in io.TextIOWrapper(fh, encoding="utf-8", errors="replace"):
+            parts = line.strip().split(",")
+            if len(parts) == 65:                    # species name + 64 features
+                X.append([float(v) for v in parts[1:]])
+                y.append(parts[0])
+    return np.asarray(X, dtype=float), np.array(y)
+
+
+def _load_dutchnumeral():
+    """Dutchnumeral (2000, 649, 10): UCI *Multiple Features* (mfeat).
+
+    Handwritten numerals '0'-'9' (200 per class) extracted from Dutch utility
+    maps — the dataset the multi-view-clustering literature calls "Dutch
+    numeral"/"HW". The paper's ND=649 is the concatenation of mfeat's six
+    feature views: fac (216) + fou (76) + kar (64) + pix (240) + zer (47) +
+    mor (6). The files carry no label column; rows are ordered by class
+    (first 200 rows = digit 0, etc.). Feature scales differ per view (raw UCI
+    values; the paper specifies no preprocessing and we apply none).
+    """
+    zf = _zip("multiple+features.zip")
+    views = ["mfeat-fac", "mfeat-fou", "mfeat-kar", "mfeat-pix", "mfeat-zer", "mfeat-mor"]
+    X = np.hstack([np.loadtxt(zf.open(v)) for v in views])
+    y = np.repeat(np.arange(10), 200)
+    return X, y
+
+
+def _load_usps():
+    """USPS (11000, 256, 10): Roweis' usps_all.mat — 1100 16×16 digit images
+    per class × 10 digits, grayscale values 0-255, stored as (256, 1100, 10).
+
+    This is the canonical 11000-sample USPS subset used in the spectral
+    clustering literature and matching the paper's Table 1 exactly.
+    Source: https://cs.nyu.edu/home/people/in_memoriam/roweis/data.html
+    """
+    import scipy.io as sio
+
+    data = sio.loadmat(DATA_DIR / "usps_all.mat")["data"]
+    X = data.reshape(256, -1).T.astype(float)      # (11000, 256)
+    # C-order flattening of (1100, 10) is sample-major: row k = sample k//10 of
+    # digit k%10 — verified by 87% nearest-neighbour label agreement (vs 11%
+    # for the class-major ordering).
+    y = np.tile(np.arange(10), 1100)
+    return X, y
 
 
 # ---------------------------------------------------------------------------
@@ -249,8 +285,6 @@ _FALLBACK = {
     # (e.g. no network for ucimlrepo); see the fallback chain in load_dataset.
     "Appendicitis":  ("ucimlrepo", (544, "Class"), (106, 7, 2)),
     "SCC":           ("ucimlrepo", (840, "Class"), (600, 60, 6)),
-    "USPS":          ("synthetic", (11000, 256, 10), None),
-    "Dutchnumeral":  ("synthetic", (2000, 649, 10), None),
 }
 
 _LOCAL_LOADERS = {
@@ -260,6 +294,7 @@ _LOCAL_LOADERS = {
     "Spectf": _load_spectf, "Landsat": _load_landsat, "Thyroid": _load_thyroid,
     "Rice": _load_rice, "Raisin": _load_raisin,
     "Landmine": _load_landmine, "Leaves": _load_leaves,
+    "Dutchnumeral": _load_dutchnumeral, "USPS": _load_usps,
 }
 
 

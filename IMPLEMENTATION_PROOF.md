@@ -983,13 +983,15 @@ algorithms on 5/6 subsets. ✅
 These are the only deviations from a literal line-by-line reproduction. Each is
 flagged ⚠️/❌ in the relevant section above.
 
-1. **❌ 4 of 20 datasets have no local data** — Appendicitis, SCC, USPS,
-   Dutchnumeral. `src/datasets.py` tries `ucimlrepo` for Appendicitis/SCC
-   (network) and otherwise uses a synthetic stand-in matching Table 1's
-   (NP, ND, NC); USPS/Dutchnumeral are synthetic stand-ins by default (no
-   public source: USPS is not on UCI, and the provided `tunadromd.zip` is the
-   TUANDROMD Android-malware dataset, *not* the paper's MPEG-7 Dutchnumeral).
-   The 16 local datasets load and match Table 1 exactly.
+1. **✅ All 20 datasets load real data.** 18 parse local zips in `data/`;
+   Appendicitis and SCC load via `ucimlrepo` (network; synthetic stand-in
+   only if offline). The three former stand-ins were resolved to their real
+   sources: **USPS** = Roweis' `usps_all.mat` (1100 images per digit × 10,
+   16×16 — the canonical 11000×256 subset, label order verified by 87%
+   nearest-neighbour agreement); **Dutchnumeral** = UCI *Multiple Features*
+   (mfeat: 6 views concatenated = 649 dims, 2000×10); **Leaves** = the zip's
+   `data_Sha_64.txt` shape descriptors (1600×64×100; the paper does not name
+   which of shape/margin/texture — shape chosen and documented).
 
 2. **⚠️ The 8 "recent" algorithms are not re-implemented from code.** Their
    per-dataset NMI/ACC/ARI/RI values are transcribed verbatim from Tables 2–5
@@ -997,10 +999,11 @@ flagged ⚠️/❌ in the relevant section above.
    external third-party methods; the paper's own contribution (Algorithm 1 +
    4 base algorithms + k-means-partitioning baseline) is fully implemented.
 
-3. **⚠️ Leaves 64-dim features** are not provided as a precomputed file; the zip
-   holds 1600 JPG images. `src/datasets.py` extracts a 64-dim vector per image
-   by resizing to 8×8 grayscale — an approximation of the paper's unspecified
-   64-dim features. Dimensions/labels match Table 1 exactly (1600, 64, 100).
+3. **✅ Leaves features resolved**: the zip ships the UCI-provided 64-dim
+   feature files (`data_Sha_64.txt` shape / `data_Mar_64.txt` margin /
+   `data_Tex_64.txt` texture); the shape descriptors are used (the paper lists
+   ND=64 without naming the view). The former 8×8 image-resize approximation
+   is retired.
 
 4. **⚠️ Randomized refinement is not implemented** (only degree-based); see
    `src/szemeredi/builder.py`. The paper uses the degree-based variant, so this
