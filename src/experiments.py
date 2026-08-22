@@ -137,11 +137,15 @@ def _summarize_all_vs_selected(df, out_dir):
 
 
 def _summarize_influence(df, out_dir):
-    """Mean NMI/time over all combinations of the other two parameters (§4.1)."""
+    """Mean NMI/time over all combinations of the other two parameters (§4.1).
+
+    For a fixed value of the parameter under study, the mean is taken over all
+    combinations of the remaining parameters (the two other partitioning
+    parameters and, for the σ-dependent algorithms, σ as well).
+    """
     if df.empty:
         return
     for param in ["epsilon", "compression", "b"]:
-        others = [c for c in ["epsilon", "compression", "b", "sigma"] if c != param]
         agg = df.groupby(["dataset", "algo", param]).agg(
             nmi=("nmi", "mean"), time=("time", "mean")
         ).reset_index()
@@ -247,8 +251,6 @@ def experiment2b_regularity_vs_kmeans(
             print(f"  [skip] {ds_name}: {e}")
             continue
         n, _, n_clusters = config.DATASETS[ds_name]
-        # choose a target number of classes comparable to the regularity partition
-        target_k = max(4, min(int(0.05 * n), 64))
         for algo in algorithms:
             best_sigma = 1.0
             best_nmi = -1
@@ -274,6 +276,9 @@ def experiment2b_regularity_vs_kmeans(
                     n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
                     epsilon=0.15, b=4, compression_rate=0.05, verbose=verbose,
                 )
+                # "keep all the other parts unchanged": the k-means partition
+                # uses the same number of classes as the regularity partition
+                target_k = int(reg_info["k"])
                 km_labels, km_info = kmeans_partition_clustering(
                     make_base_algorithm(algo, X=X), X, S,
                     n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,

@@ -244,11 +244,13 @@ def _synthetic(n, d, nc, seed=314):
 
 
 _FALLBACK = {
-    # name: (kind, args)
-    "Appendicitis": ("ucimlrepo", (544, "Class")),
-    "SCC":          ("ucimlrepo", (840, "Class")),
-    "USPS":         ("synthetic", (11000, 256, 10)),
-    "Dutchnumeral":  ("synthetic", (2000, 649, 10)),
+    # name: (kind, args, synthetic-shape)
+    # ``synthetic-shape`` is only used when the primary source is unreachable
+    # (e.g. no network for ucimlrepo); see the fallback chain in load_dataset.
+    "Appendicitis":  ("ucimlrepo", (544, "Class"), (106, 7, 2)),
+    "SCC":           ("ucimlrepo", (840, "Class"), (600, 60, 6)),
+    "USPS":          ("synthetic", (11000, 256, 10), None),
+    "Dutchnumeral":  ("synthetic", (2000, 649, 10), None),
 }
 
 _LOCAL_LOADERS = {
@@ -274,12 +276,14 @@ def load_dataset(name):
     if name in _LOCAL_LOADERS:
         X, y = _LOCAL_LOADERS[name]()
     elif name in _FALLBACK:
-        kind, args = _FALLBACK[name]
+        kind, args, syn_shape = _FALLBACK[name]
         if kind == "ucimlrepo":
             try:
                 X, y = _load_via_ucimlrepo(*args)
             except Exception:
-                X, y = _synthetic(*args)
+                if syn_shape is None:
+                    raise
+                X, y = _synthetic(*syn_shape)
         else:
             X, y = _synthetic(*args)
     else:

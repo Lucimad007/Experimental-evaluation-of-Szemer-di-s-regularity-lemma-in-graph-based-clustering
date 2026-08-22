@@ -49,7 +49,9 @@ def run_exp1(args):
         out_dir=args.out,
         verbose=args.verbose,
     )
-    plotting.plot_parameter_influence(df.attrs.get("out_dir") or (args.out or "results") + "/exp1_parameter_influence")
+    exp1_dir = (args.out or "results") + "/exp1_parameter_influence"
+    plotting.plot_parameter_influence(exp1_dir)
+    plotting.plot_all_vs_selected(exp1_dir)
     print(f"[exp1] wrote {len(df)} rows")
 
 

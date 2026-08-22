@@ -30,14 +30,18 @@ SIGMA_DEMO = (0.5, 1.0, 2.0)
 EPS_DEMO = (0.1, 0.2)
 CR_DEMO = (0.03, 0.05)
 B_DEMO = (4, 8)
+# demo-speed forest size (the paper uses Tclust = 1000; see config.SPRG_TREES)
+SPRG_TREES_DEMO = 50
 
 
-def _graph(algo, X, sigma, n_clusters=None):
-    return (sprg_similarity(X, n_clusters) if algo == "SPRG"
-            else gaussian_similarity(X, sigma))
+def _graph(algo, X, sigma, n_clusters=None, sprg_graph=None):
+    if algo == "SPRG":
+        return sprg_graph if sprg_graph is not None else sprg_similarity(X, n_clusters)
+    return gaussian_similarity(X, sigma)
 
 
 def main():
+    config.SPRG_TREES = SPRG_TREES_DEMO
     print("=" * 78)
     print("Exp 2 — Enhanced (Reg-*) vs Original algorithms (NMI / ACC)")
     print("=" * 78)
@@ -46,11 +50,18 @@ def main():
     for ds in EXP2_SET:
         X, y = load_dataset(ds)
         n, _, k = config.DATASETS[ds]
+        # the SPRG graph is sigma-independent: learn it once per dataset
+        sprg_graph = None
+        if "SPRG" in ALGOS:
+            try:
+                sprg_graph = sprg_similarity(X, k)
+            except Exception as e:
+                print(f"  [skip] {ds}/SPRG graph: {e}")
         for algo in ALGOS:
             # original: best over a small σ sweep (SPRG ignores σ)
             best_o = None
             for sigma in (SIGMA_DEMO if algo != "SPRG" else (1.0,)):
-                S = _graph(algo, X, sigma, k)
+                S = _graph(algo, X, sigma, k, sprg_graph=sprg_graph)
                 try:
                     lo = run_original(algo, S, k if algo in ("SPC", "SPRG") else None, X=X)
                     mo = evaluate(y, lo)
@@ -61,7 +72,7 @@ def main():
             if best_o is None:
                 continue
             mo, best_sigma = best_o
-            S = _graph(algo, X, best_sigma, k)
+            S = _graph(algo, X, best_sigma, k, sprg_graph=sprg_graph)
             # enhanced: best over a small (ε, ϵ, b) sweep
             best_e = None
             for eps in EPS_DEMO:
