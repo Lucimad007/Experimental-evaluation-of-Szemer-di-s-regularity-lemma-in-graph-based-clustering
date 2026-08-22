@@ -23,18 +23,17 @@ def _symmetrize(S):
 
 
 def _k_smallest_eigenvectors(M, k):
-    """Eigenvectors of the k smallest eigenvalues of a symmetric matrix."""
+    """Eigenvectors of the k smallest eigenvalues of a symmetric matrix.
+
+    Uses LAPACK's ``dsyevr`` (subset driver): O(n^2) memory and it handles even
+    USPS-scale (n = 11000) dense Laplacians in minutes. (An earlier version
+    fell back to ``eigsh(which="SM")`` for n > 2000, which converges extremely
+    slowly on dense graphs and could stall for hours.)
+    """
     n = M.shape[0]
     if k >= n:
         k = n
-    if n <= 2000 or k >= n - 2:
-        evals, eigvecs = scipy.linalg.eigh(M)
-        return eigvecs[:, :k]
-    if scipy.sparse.issparse(M):
-        _, eigvecs = scipy.sparse.linalg.eigsh(M, k=k, which="SM")
-    else:
-        M_sparse = scipy.sparse.csr_matrix(M)
-        _, eigvecs = scipy.sparse.linalg.eigsh(M_sparse, k=k, which="SM")
+    _, eigvecs = scipy.linalg.eigh(M, subset_by_index=[0, k - 1])
     return eigvecs
 
 
