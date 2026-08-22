@@ -227,9 +227,12 @@ def experiment2_enhanced_vs_original(
                 "enh_nmi": best_enh[1]["nmi"], "enh_time": best_enh[2]["total_time"],
                 "enh_k": best_enh[2]["k"],
             })
+        # checkpoint after each dataset: a crash preserves all completed work
+        pd.DataFrame(rows).to_csv(out_dir / "enhanced_vs_original_partial.csv", index=False)
 
     df = pd.DataFrame(rows)
     df.to_csv(out_dir / "enhanced_vs_original.csv", index=False)
+    (out_dir / "enhanced_vs_original_partial.csv").unlink(missing_ok=True)
     return df
 
 
@@ -298,9 +301,12 @@ def experiment2b_regularity_vs_kmeans(
                 "reg_nmi": reg_m["nmi"], "reg_time": reg_info["total_time"],
                 "km_nmi": km_m["nmi"], "km_time": km_info["total_time"],
             })
+        # checkpoint after each dataset: a crash preserves all completed work
+        pd.DataFrame(rows).to_csv(out_dir / "regularity_vs_kmeans_partial.csv", index=False)
 
     df = pd.DataFrame(rows)
     df.to_csv(out_dir / "regularity_vs_kmeans.csv", index=False)
+    (out_dir / "regularity_vs_kmeans_partial.csv").unlink(missing_ok=True)
     return df
 
 
@@ -388,14 +394,24 @@ def experiment3_vs_recent(dataset_names=None, out_dir=None, verbose=False):
             row.update(recent_vals[metric])
             row.update(reg_vals[metric])
             metric_rows[metric].append(row)
+        # checkpoint after each dataset: a crash preserves all completed work
+        _write_exp3_tables(metric_rows, out_dir, final=False)
 
-    # write tables with a mean row
+    _write_exp3_tables(metric_rows, out_dir, final=True)
+    return metric_rows
+
+
+def _write_exp3_tables(metric_rows, out_dir, final=True):
+    """Write the per-metric Exp 3 tables (partial during the run, final at end)."""
+    suffix = "" if final else "_partial"
     for metric, rows in metric_rows.items():
         df = pd.DataFrame(rows)
-        if not df.empty:
+        if not df.empty and final:
             num = df.drop(columns=["dataset"])
             mean_row = {"dataset": "mean"}
             mean_row.update(num.mean(numeric_only=True).to_dict())
             df = pd.concat([df, pd.DataFrame([mean_row])], ignore_index=True)
-        df.to_csv(out_dir / f"table_{metric}.csv", index=False)
-    return metric_rows
+        df.to_csv(out_dir / f"table_{metric}{suffix}.csv", index=False)
+    if final:
+        for metric in metric_rows:
+            (out_dir / f"table_{metric}_partial.csv").unlink(missing_ok=True)
