@@ -74,6 +74,16 @@ Wine SPC 0.84/0.76, APC 0.73/0.58. Same regime everywhere; where we differ we
 are *above* the paper, the expected direction for best-of-grid selection.
 Full per-dataset tables: `RESULTS.md` (written by `python -m src.make_results`).
 
+**Known per-dataset divergence (documented, not hidden):** on *Appendicitis*
+(n=106, the smallest dataset) the original SPC already scores NMI = 1.000 at
+every σ in our run, while our enhanced version tops out at 0.15 (the paper
+reports Reg-* = 0.91 there). The dataset is trivially separable; partitioning
+106 points into ≥5 classes destroys the two-block structure of the reduced
+graph in our pipeline (with k = 2 the DSet step is degenerate). The paper
+itself reports the enhancement degrading one dataset of twenty (Landsat);
+ours appears to be Appendicitis. All other datasets match the paper's regime.
+Full per-dataset tables: `RESULTS.md` (written by `python -m src.make_results`).
+
 **(c) Mechanism.** The reduced graph R was verified to carry ground-truth-aligned
 block structure (majority-pure classes; intra-block density ≈0.8 vs ≈0.2–0.35
 between blocks) — the structure-preserving compression the lemma guarantees.
