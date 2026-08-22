@@ -48,8 +48,8 @@ ratio `|R|/|G|`; `⌊1/ϵ⌋` is the minimum class size).
 3. If at most `ε * C(ki,2)` pairs are not verified as regular, `Pi` is a regular
    partition — stop.
 4. Otherwise, refine the current classes into a new partition `P'` with
-   `1 + ki·4·ki` classes using a refinement algorithm (Alon et al.).
-5. Set `ki+1 = ki·4·ki`, `Pi+1 = P'`, `i ← i+1`, go to Step 2.
+   `1 + ki·4^ki` classes using a refinement algorithm (Alon et al.).
+5. Set `ki+1 = ki·4^ki`, `Pi+1 = P'`, `i ← i+1`, go to Step 2.
 
 ### Practical modifications used in this paper (§3.2)
 

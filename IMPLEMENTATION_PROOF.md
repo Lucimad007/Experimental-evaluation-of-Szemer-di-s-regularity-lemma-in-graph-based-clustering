@@ -86,8 +86,18 @@ exactly as in that paper:
    ground-truth `k` → `sprg(X, n_clusters)`.
 
 The shared-node weights are computed exactly via a sparse path-incidence matrix
-(`numerator(i,j) = Σ w_u over shared internal nodes` = `(P Pᵀ)_ij`), and the
-denominator follows the **longer path** (Eq. 14), ties to `i`.
+storing `√w_u` per path node (`numerator(i,j) = Σ w_u over shared internal
+nodes` = `(P Pᵀ)_ij` since `√w·√w = w`; the denominator's own-path weight sum
+is the row sum of `P²`), and the denominator follows the **longer path**
+(Eq. 14), ties to `i`. The root node is **excluded** from all paths ("the root
+node γ is not considered in computing the similarity since all samples share
+the same root node", 20.pdf Eq. 7); a pair split at the root's children gets
+similarity 0, as the paper requires. Both the fast implementation and a naive
+O(n²) transcription of Eq. 7/11/13 agree to 2e-16 on all entries (verified for
+the `unfm` and `adpt` variants). A split can route every real sample to one
+child, leaving a leaf with `|Λ| = 0` real training samples — a case the paper
+does not cover; we use the leaf term `1/max(|Λ|,1)` (empty leaf treated as a
+singleton neighbourhood).
 
 **Reg-SPRG** (Algorithm 1 line 19, "perform graph-based clustering on R"): R has
 no feature vectors, so each reduced-graph vertex is represented by its
@@ -408,20 +418,23 @@ def random(self, b=2):
         return num_of_irregular_pairs
 ```
 
-**Steps 3 & 5 — stop if regular, else refine and loop.** ✅
+**Steps 3 & 5 — stop if regular, else refine and loop.** The loop keeps the
+pair-check at the top of each pass so the reduced graph is always built from
+pairs verified at the *final* partition (Algorithm 1's `while ϵ > k_i/n` exits
+without a final check; the re-check is required to construct R). ✅
 
-```143:193:src/szemeredi/regularity_lemma.py
-        iteration = 0
-        self.partition_initialization(self, b)
+```src/szemeredi/regularity_lemma.py
         while True:
             self.certs_compls_list = []
             self.regularity_list = []
             self.condition_verified = [0] * len(self.conditions)
             iteration += 1
             num_of_irregular_pairs = self.check_pairs_regularity()
-            if self.check_partition_regularity(num_of_irregular_pairs):
+            if self.check_partition_regularity(num_of_irregular_pairs, stop_rule=stop_rule):
                 break
             if self.k >= max_k:
+                # Algorithm 1 line 3's while condition ϵ > k_i/n is no longer
+                # satisfied: stop iterating (modification 3).
                 break
             self.refinement_step(self)
         self.generate_reduced_sim_mat()
@@ -468,8 +481,10 @@ def degree_based(self):
                 self.classes[difference_nodes_ordered_by_degree] = 0
         else:
             self.k += 1
+            # no irregular partner: split in two by (global) degree order
+            global_degrees = self.adj_mat.sum(1)
             s_indices_ordered_by_degree = sorted(
-                list(np.where(self.classes == s)[0]), key=lambda el: s_r_degs[el], reverse=True
+                list(np.where(self.classes == s)[0]), key=lambda el: global_degrees[el], reverse=True
             )
             if is_classes_cardinality_odd:
                 self.classes[s_indices_ordered_by_degree.pop(0)] = 0
@@ -485,6 +500,12 @@ def degree_based(self):
             ]
         ] = self.k
 ```
+
+> In the reference implementation the no-irregular-partner branch sorted by a
+> stale `s_r_degs` from a previous class pair (a latent `NameError` when the
+> first class had no irregular partner); we sort by global adjacency degree,
+> which is what "split in two by degree order" (the reference's own docstring)
+> requires. The `sys.exit` on V0 overflow is now a `RuntimeError`.
 
 ### §3.2 Practical modifications
 

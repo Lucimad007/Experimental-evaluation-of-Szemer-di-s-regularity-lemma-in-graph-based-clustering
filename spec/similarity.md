@@ -25,6 +25,11 @@ SPRG learns its own similarity matrix and does **not** use `σ`. See
 
 ## Selection of σ
 
-In the parameter-influence experiments (§4.1) the best `σ` per dataset/algorithm is
-selected by the clustering quality (NMI) over the grid. For the comparison
-experiments (§4.2, §4.3) the best `σ` from the parameter study is used.
+The paper's §4.1 aggregation protocol ("the mean result of all the
+combinations of two parameters") fixes the partitioning parameters under study
+but does not state how σ is handled in that mean. Our implementation (documented
+interpretation) averages over the remaining parameters *including σ* — see
+`experiments.py::_summarize_influence`. For the comparison experiments (§4.2,
+§4.3) the original algorithm uses its best σ by NMI over the grid, and the
+enhanced algorithm is evaluated over the σ × recommended-(ε, ϵ, b) grid with the
+best NMI kept.

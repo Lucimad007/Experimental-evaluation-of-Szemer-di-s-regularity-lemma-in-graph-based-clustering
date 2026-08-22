@@ -171,12 +171,15 @@ def _train_tree(X, rng, mtry, min_samples_leaf):
         node, idx = stack.pop()
         try_split(node, idx)
 
-    # route every sample of X through the tree
+    # route every sample of X through the tree; the root (node 0) is NOT
+    # recorded — "the root node γ is not considered in computing the
+    # similarity since all samples share the same root node" (20.pdf, Eq. 7)
     paths, leaf_ids, leaf_sizes = [], [], []
     for i in range(n):
         node, path = 0, []
         while left[node] != -1 or right[node] != -1:
-            path.append(node)
+            if node != 0:
+                path.append(node)
             node = left[node] if X[i, feature[node]] < threshold[node] else right[node]
         paths.append(path)
         leaf_ids.append(node)
@@ -206,20 +209,25 @@ def _accumulate_tree_affinity(A, tree, n, variant, block=1024):
         [1.0 / nr if nr > 0 else 0.0 for nr in tree.n_real]
     )
 
-    # P[i, u] = w_u for the internal nodes u (root excluded) on i's path;
-    # numerator(i, j) = Σ w_u over the internal nodes shared by i and j
+    # P[i, u] = sqrt(w_u) for the internal nodes u (root excluded) on i's path.
+    # The numerator of Eq. 7 is the sum of w_u over the nodes shared by i and
+    # j, which equals (P Pᵀ)_ij because sqrt(w_u)·sqrt(w_u) = w_u; the
+    # denominator needs Σ w_u over i's own path, i.e. the row sum of P².
     rows = np.concatenate([np.full(len(p), i, dtype=int) for i, p in enumerate(tree.paths)])
     cols = np.concatenate([np.asarray(p, dtype=int) for p in tree.paths])
     if cols.size == 0:                         # single-leaf tree: zero numerator
         return
-    P = scipy.sparse.csr_matrix((w[cols], (rows, cols)), shape=(n, n_nodes))
-    path_weight = np.asarray(P.sum(axis=1)).ravel()
+    P = scipy.sparse.csr_matrix((np.sqrt(w[cols]), (rows, cols)), shape=(n, n_nodes))
+    path_weight = np.asarray(P.multiply(P).sum(axis=1)).ravel()   # Σ w_u per path
 
     if variant == "unfm":
         denom = depth + 1.0                    # internal nodes + leaf (weight 1)
     else:  # adpt: Σ 1/|S_κ| over i's internal nodes + 1/|Λ(i)|
+        # a split can route all real samples to one child, leaving a leaf with
+        # |Λ| = 0 real training samples; the paper does not cover this case —
+        # we treat the empty leaf as a singleton neighbourhood (term 1/1)
         denom = path_weight + np.array(
-            [1.0 / ls if ls > 0 else 0.0 for ls in tree.leaf_sizes]
+            [1.0 / max(ls, 1) for ls in tree.leaf_sizes]
         )
     denom = np.where(denom > 0, denom, 1e-12)
 
