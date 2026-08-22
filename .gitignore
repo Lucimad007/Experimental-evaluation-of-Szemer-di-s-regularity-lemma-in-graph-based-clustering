@@ -219,6 +219,7 @@ __marimo__/
 
 # Local reference materials (PDFs, course notes)
 papers/
+references/
 
 # Cloned reference implementations (for study only, not part of project)
 .reference/
