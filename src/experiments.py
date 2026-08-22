@@ -69,7 +69,21 @@ def experiment1_parameter_influence(
     out_dir = Path(out_dir or RESULTS_DIR) / "exp1_parameter_influence"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # resume from the checkpoint (e.g. after a power outage): datasets already
+    # present in raw_runs_partial.csv are skipped entirely
     rows = []
+    partial_csv = out_dir / "raw_runs_partial.csv"
+    if partial_csv.exists():
+        try:
+            old = pd.read_csv(partial_csv)
+            rows = old.to_dict("records")
+            done = set(old["dataset"].unique())
+            before = len(dataset_names)
+            dataset_names = [d for d in dataset_names if d not in done]
+            print(f"[exp1] resuming: {len(done)} dataset(s) already checkpointed, "
+                  f"{len(dataset_names)}/{before} remaining")
+        except Exception:
+            rows = []
     for ds_name in tqdm(dataset_names, desc="Exp1 datasets"):
         try:
             X, y = load_dataset(ds_name)
@@ -168,7 +182,20 @@ def experiment2_enhanced_vs_original(
     out_dir = Path(out_dir or RESULTS_DIR) / "exp2_enhanced_vs_original"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # resume: (dataset, algo) pairs already in the partial CSV are skipped
     rows = []
+    done_pairs = set()
+    partial_csv = out_dir / "enhanced_vs_original_partial.csv"
+    if partial_csv.exists():
+        try:
+            old = pd.read_csv(partial_csv)
+            rows = old.to_dict("records")
+            done_pairs = set(zip(old["dataset"], old["algo"]))
+            dataset_names = [d for d in dataset_names
+                             if not all((d, a) in done_pairs for a in algorithms)]
+            print(f"[exp2] resuming: {len(rows)} (dataset, algo) rows checkpointed")
+        except Exception:
+            rows = []
     for ds_name in tqdm(dataset_names, desc="Exp2 datasets"):
         try:
             X, y = load_dataset(ds_name)
@@ -177,6 +204,8 @@ def experiment2_enhanced_vs_original(
             continue
         n, _, n_clusters = config.DATASETS[ds_name]
         for algo in algorithms:
+            if (ds_name, algo) in done_pairs:
+                continue
             # pick best sigma for the original algorithm (SPRG ignores sigma)
             best_orig = None
             best_orig_nmi = -1
@@ -249,7 +278,20 @@ def experiment2b_regularity_vs_kmeans(
     out_dir = Path(out_dir or RESULTS_DIR) / "exp2b_regularity_vs_kmeans"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # resume: (dataset, algo) pairs already in the partial CSV are skipped
     rows = []
+    done_pairs = set()
+    partial_csv = out_dir / "regularity_vs_kmeans_partial.csv"
+    if partial_csv.exists():
+        try:
+            old = pd.read_csv(partial_csv)
+            rows = old.to_dict("records")
+            done_pairs = set(zip(old["dataset"], old["algo"]))
+            dataset_names = [d for d in dataset_names
+                             if not all((d, a) in done_pairs for a in algorithms)]
+            print(f"[exp2b] resuming: {len(rows)} (dataset, algo) rows checkpointed")
+        except Exception:
+            rows = []
     for ds_name in tqdm(dataset_names, desc="Exp2b datasets"):
         try:
             X, y = load_dataset(ds_name)
@@ -258,6 +300,8 @@ def experiment2b_regularity_vs_kmeans(
             continue
         n, _, n_clusters = config.DATASETS[ds_name]
         for algo in algorithms:
+            if (ds_name, algo) in done_pairs:
+                continue
             best_sigma = 1.0
             best_nmi = -1
             for sigma in (SIGMA_GRID if _needs_sigma(algo) else [1.0]):
@@ -359,6 +403,17 @@ def experiment3_vs_recent(dataset_names=None, out_dir=None, verbose=False):
     dataset_names = dataset_names or DATASET_ORDER
     reg_algos = ("SPC", "APC", "DSet", "SPRG")
     reg_cols = [f"Reg-{a}" for a in reg_algos]
+
+    # resume: datasets already present in the partial NMI table are skipped
+    partial_csv = out_dir / "table_nmi_partial.csv"
+    if partial_csv.exists():
+        try:
+            old = pd.read_csv(partial_csv)
+            done = set(old["dataset"].unique())
+            dataset_names = [d for d in dataset_names if d not in done]
+            print(f"[exp3] resuming: {len(done)} dataset(s) checkpointed")
+        except Exception:
+            pass
 
     # per-metric rows: dataset -> {recent algos..., Reg-*...}
     metric_rows = {metric: [] for metric in ("nmi", "acc", "ari", "ri")}
