@@ -11,6 +11,19 @@ rem  see the commands at the bottom of this file for when power allows.
 rem ===========================================================================
 cd /d %~dp0
 
+rem --- guard: never stack duplicate runs on top of live ones ---------------
+tasklist /FI "IMAGENAME eq python.exe" 2>NUL | find /I "python.exe" >NUL
+if %ERRORLEVEL%==0 (
+    echo.
+    echo  Experiments are ALREADY RUNNING - not launching duplicates.
+    echo  If they are stuck or unwanted, close the minimized windows or run:
+    echo      taskkill /F /IM python.exe
+    echo  then run this file again.
+    echo.
+    pause
+    exit /b
+)
+
 set SMALL=Appendicitis,Wine,Sonar,Seeds,Glass,Thyroid,Spectf,Ecoli,Landmine,Libras,SCC,Raisin
 
 echo [1/5] exp1 full parameter grid - worker 1 (Thyroid, Wine, Glass, Seeds)
