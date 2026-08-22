@@ -22,121 +22,96 @@ audit. A summary of what is **not** fully reproduced is at the end (§ "Gaps").
 
 ### §2.1 Spectral clustering (SPC)
 
-Paper: normalized Laplacian `L_sym = I − D^{−1/2} S D^{−1/2}`, take the `k` smallest
-eigenvectors, row-normalize, run k-means; `k` = ground-truth. ✅
+Paper (verbatim): "spectral clustering builds the **unnormalized** Laplacian `L`
+and computes the first `k` eigenvectors `u1, …, uk` corresponding to the `k`
+smallest eigenvalues of `L`. Given the matrix `U ∈ R^{n×k}` …, we use each row of
+`U` as a data point and do clustering with standard methods like `k`-means." ✅
 
-```21:51:src/clustering/spectral.py
-def spc(sim_mat, n_clusters, random_state=314, n_init=10):
+```src/clustering/spectral.py
+def spc(sim_mat, n_clusters, random_state=314, n_init=10, variant="unnormalized"):
     S = _symmetrize(np.asarray(sim_mat, dtype=float))
     n = S.shape[0]
     d = S.sum(axis=1)
-    d_safe = np.where(d > 0, d, 1e-12)
-    D_inv_sqrt = 1.0 / np.sqrt(d_safe)
-    L_sym = np.eye(n) - (D_inv_sqrt[:, None] * S * D_inv_sqrt[None, :])
-    L_sym = _symmetrize(L_sym)
-    eigvals, eigvecs = np.linalg.eigh(L_sym)
-    U = eigvecs[:, :n_clusters]
-    norms = np.linalg.norm(U, axis=1, keepdims=True)
-    norms = np.where(norms > 0, norms, 1e-12)
-    U = U / norms
+    if variant == "unnormalized":
+        L = np.diag(d) - S                     # L = D − S (paper §2.1)
+        L = _symmetrize(L)
+        U = _k_smallest_eigenvectors(L, n_clusters)
+    elif variant == "njw":                     # Ng–Jordan–Weiss, ref [23]
+        ...
     km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=n_init)
     labels = km.fit_predict(U)
     return labels
 ```
 
-### §2.1 SPRG (structured affinity learning via CLR + connected components)
+> The two normalized variants the paper mentions (Shi–Malik [22], NJW [23]) are
+> available via `variant="njw"`; the default — and what the paper describes as
+> *the* SPC it uses — is the unnormalized Laplacian, with **no** row
+> normalization (the paper says "use each row of U as a data point", nothing
+> more).
 
-Paper: SPRG learns a structured similarity matrix (does **not** use `σ`) and
-clusters by its connected components. ✅ (faithful to the published CLR basis)
+### §2.1 SPRG (clustering-forest affinity + spectral clustering)
 
-SPRG is built on the **Constrained Laplacian Rank (CLR)** model (Nie, Wang,
-Jordan & Huang, AAAI 2016), which is the public primary source SPRG is based on
-(the paper cites it). CLR learns a non-negative, row-stochastic affinity `S`
-whose Laplacian `L_S = D_S − (Sᵀ+S)/2` has rank `n − k` (i.e. `S` has exactly `k`
-connected components), by alternating (Ky Fan's theorem) an eigenvector update of
-`F` and a row-wise simplex projection of `q_i = a_i − (λ/2) v_i`. The initial
-affinity `A` follows Eq. (35) of Nie et al. (m-NN, distance-consistent,
-scale-invariant). The cluster labels are the connected components of the learned
-`S` (no k-means). `k` is the ground-truth cluster count.
+Paper: SPRG is "a variant of SPC" that "learns the similarity by combining
+subtle similarity in discriminative feature subspaces" (citation **[20]**),
+"does not involve the parameter σ", and requires the number of clusters.
+✅ (implemented from its primary source)
 
-```37:52:src/clustering/sprg.py
-def _smallest_eigh(L, k):
-    """Return the (k+1) smallest eigenpairs of a dense symmetric PSD matrix L.
-    Uses a dense partial `eigh` for small n and Lanczos (`eigsh`) for large n,
-    so the cost stays O(n^2 k) rather than O(n^3) when n is large."""
-    n = L.shape[0]
-    n_eval = min(k + 1, n)
-    if n <= 1500 or n_eval >= n:
-        evals, evecs = _eigh_subset(L, subset_by_index=[0, n_eval - 1])
-        return evals, evecs
-    ncv = min(n, 2 * n_eval + 20)
-    LO = LinearOperator((n, n), matvec=lambda x: L @ x, dtype=L.dtype)
-    evals, evecs = _eigsh(LO, k=n_eval, which="SA", ncv=ncv, tol=1e-6)
-    order = np.argsort(evals)
-    return evals[order], evecs[:, order]
+**[20] = Zhu, Loy & Gong, "Constructing robust affinity graphs for spectral
+clustering", CVPR 2014** (available as `references/20.pdf`; the main paper also
+cites [25] — Hou et al. PR 2023 — only for the *claim* that SPRG beats NCut, and
+[25] itself likewise cites SPRG as Zhu–Loy–Gong). SPRG is therefore implemented
+exactly as in that paper:
+
+1. **Clustering forest** (Sec. 3.1): `Tclust` trees (paper: 1000), each trained
+   on a random subset of `X` (bootstrap), unsupervised via the **pseudo
+   two-class** algorithm — a synthetic sample set uniform in the feature
+   bounding box is labelled class 1, real samples class 0 — with Gini
+   information-gain splits (Eq. 1–3) searched greedily over `mtry = √d` random
+   features and the `|S|−1` mid-point thresholds; splitting stops when ≤ `φ`
+   real samples arrive (`φ` chosen by cross-validation in the paper; our
+   documented default `φ = 5`, `config.SPRG_MIN_LEAF`).
+
+2. **Structure-aware affinity** (Sec. 3.2, Eq. 7): for a sample pair, `λ` =
+   number of internal tree nodes their paths share (root not counted), `M =
+   max(|Pi|, |Pj|) − 1` non-root nodes on the longer path;
+   `a^t_ij = (Σ_{κ≤λ} w_κ)/(Σ_{κ≤M} w_κ)` with the three published weighting
+   variants — `ClustRF-Bi` (Eq. 9–10), `ClustRF-Strct-Unfm` (Eq. 11, all
+   weights 1) and `ClustRF-Strct-Adpt` (Eq. 12–14, `w_κ = 1/|S_κ|` for internal
+   nodes and `1/|Λ_b̂|` for the leaf of the longer path; the paper's best and
+   our default, `config.SPRG_VARIANT`).
+
+3. **Forest consensus** (Eq. 8): `A = (1/Tclust) Σ_t A^t` → `forest_affinity`.
+
+4. **Clustering**: the paper's SPC (unnormalized Laplacian) on `A` with the
+   ground-truth `k` → `sprg(X, n_clusters)`.
+
+The shared-node weights are computed exactly via a sparse path-incidence matrix
+(`numerator(i,j) = Σ w_u over shared internal nodes` = `(P Pᵀ)_ij`), and the
+denominator follows the **longer path** (Eq. 14), ties to `i`.
+
+**Reg-SPRG** (Algorithm 1 line 19, "perform graph-based clustering on R"): R has
+no feature vectors, so each reduced-graph vertex is represented by its
+similarity profile (its row of R, `k`-dimensional) and the forest is grown on
+those profiles — SPRG proper on the graph, not a substitute:
+
+```src/clustering/sprg.py
+def sprg_on_graph(sim_mat, n_clusters, min_samples_leaf=None, **kwargs):
+    """... min_samples_leaf defaults to 1 here because R typically has far
+    fewer vertices than a dataset has points ..."""
+    R = np.asarray(sim_mat, dtype=float)
+    if min_samples_leaf is None:
+        min_samples_leaf = 1
+    return sprg(R, n_clusters, min_samples_leaf=min_samples_leaf, **kwargs)
 ```
 
-Main CLR loop (alternating S-update via vectorized simplex projection and
-F-update via the k smallest eigenvectors, with Nie's λ-heuristic):
+wired in `src/runners.py:make_base_algorithm("SPRG")`.
 
-```146:171:src/clustering/sprg.py
-    for _it in range(max_iter):
-        S_old = S
-        # 1. s_i <- project( a_i - (lam/2) v_i ) onto the simplex (Gram form for v)
-        G = F @ F.T
-        p = np.diag(G)
-        V = 0.5 * (p[:, None] + p[None, :] - 2.0 * G)
-        Q = A - (lam / 2.0) * V
-        S = _project_simplex_rows(Q)
-        np.fill_diagonal(S, 0.0)
-        # 2. F = k smallest eigenvectors of L_S
-        L_S, Ssym = _laplacian(S)
-        evals, evecs = _smallest_eigh(L_S, k)
-        F = evecs[:, :k]
-        # lambda heuristic (Nie et al.): adjust lam so #zero eigenvalues of L_S == k
-        n_zero = int((evals < eps_zero).sum())
-        if n_zero > k:
-            lam /= 2.0
-        elif n_zero < k:
-            lam *= 2.0
-        if np.linalg.norm(S - S_old) < tol and n_zero == k:
-            break
-    return S
-```
-
-Public graph builder and SPRG entry point (learn affinity → connected
-components, with a spectral fallback when CLR stops early without exactly `k`
-components on very large graphs):
-
-```174:201:src/clustering/sprg.py
-def sprg_similarity(X, k, m=10, **kwargs):
-    S = clr_learn(X, k, m=m, **kwargs)
-    return (S + S.T) / 2.0
-
-def sprg(X, n_clusters, m=10, random_state=314, **kwargs):
-    S = clr_learn(X, n_clusters, m=m, **kwargs)
-    Ssym = (S + S.T) / 2.0
-    ncomp, labels = connected_components(Ssym > 0, directed=False)
-    if ncomp == n_clusters:
-        return labels
-    from .spectral import spc
-    return spc(Ssym, n_clusters, random_state=random_state)
-```
-
-> ✅ SPRG is now implemented from its **public primary source** (CLR, Nie et al.
-> 2016), which the paper cites — so the GitHub code is not required. On
-> small/medium datasets CLR converges to exactly `k` components (Wine, Seeds,
-> Ecoli all return `k_found == k`). Two documented deviations remain:
-> - ⚠️ On very large graphs (e.g. Landsat n=6435) the λ-heuristic can stop early
->   without exactly `k` components; `sprg` then falls back to spectral clustering
->   on the learned affinity so it always returns `k` labels.
-> - ⚠️ The enhanced Reg-SPRG can be degenerate on small/clean graphs because the
->   CLR-learned `S` is already a sparse `k`-component graph, so the regularity
->   lemma over-collapses it. This matches the paper's observation that the
->   enhancement does not always help (esp. on small datasets).
-> - ⚠️ SPRG-specific tweaks beyond the published CLR basis are not in the public
->   text; `m` (neighbourhood size) defaults to 10 (Nie et al. use 5) for better
->   empirical accuracy.
+> ⚠️ Paper-silent SPRG constants (documented choices, `src/config.py`):
+> `Tclust = 1000` (paper Sec. 4), `mtry = √d` (paper Sec. 4), bootstrap
+> per-tree subsets, `φ = 5`, variant `adpt`, one fixed seed (the paper averages
+> over 5 trials). SPRG's similarity learning is expensive — the main paper
+> itself notes the "much larger computation load" — so `config.SPRG_TREES` can
+> be reduced for smoke/demo runs.
 
 ### §2.2 Affinity propagation (APC)
 
@@ -342,13 +317,34 @@ Supporting machinery for Condition 3 — neighbourhood-deviation matrix, `find_Y
         return cert, compl
 ```
 
-### Definition 2 — regular partition (≤ `ε·C(k,2)` irregular pairs) ✅
+### Definition 2 — regular partition ✅
 
-```110:112:src/szemeredi/regularity_lemma.py
-    def check_partition_regularity(self, num_of_irregular_pairs):
-        """Step 3: is the partition regular? (≤ ε·C(k,2) irregular pairs)."""
-        return num_of_irregular_pairs <= self.epsilon * ((self.k * (self.k - 1)) / 2.0)
+Paper Definition 2 (regular partition: `|V0| < ε|V|`, all but at most `εk²`
+pairs ε-regular) is the theoretical notion. Two stopping rules are implemented
+(`stop_rule` parameter, `src/szemeredi/regularity_lemma.py`):
+
+- **`"algorithm1"` (default)** — Algorithm 1 line 12, verified character-level
+  against the PDF: break as soon as `n_ir < k_i(k_i−1)/2` — i.e. when fewer
+  than **half** of all pairs are not verified as ε-regular (**no ε factor**).
+- **`"theoretical"`** — §3.2 Step 3: the partition is regular when at most
+  `ε·C(k,2)` pairs are not verified as regular.
+
+```src/szemeredi/regularity_lemma.py
+    def check_partition_regularity(self, num_of_irregular_pairs, stop_rule="algorithm1"):
+        total_pairs = (self.k * (self.k - 1)) / 2.0
+        if stop_rule == "algorithm1":
+            return num_of_irregular_pairs < total_pairs
+        if stop_rule == "theoretical":
+            return num_of_irregular_pairs <= self.epsilon * total_pairs
 ```
+
+> In practice (matching the paper's "we obtain approximately, but not provably,
+> regular partitions") the Alon conditions flag almost every pair irregular on
+> small real graphs, both rules keep refining, and the loop ends at the
+> compression stop `k ≥ ϵ·|V|` — "terminating the iteration when the number of
+> classes is greater than `ϵ|G|` in most cases" (§4.1). The pair check runs at
+> the top of each pass so R is always built from pairs verified at the **final**
+> partition.
 
 ### Lemma 1 (regularity lemma) — realised by the partitioning loop (§3.2 below).
 
@@ -522,7 +518,7 @@ with the stop test at `src/szemeredi/regularity_lemma.py:179:185` (`if self.k >=
 ```
 
 ### Reduced graph construction (k vertices, one per class; edge weight = `dw`;
-regular pairs above threshold `d0`; `V0` excluded). ✅
+`V0` excluded). ✅
 
 ```54:69:src/szemeredi/regularity_lemma.py
     def generate_reduced_sim_mat(self):
@@ -535,13 +531,24 @@ regular pairs above threshold `d0`; `V0` excluded). ✅
                 else self.regularity_list[r - 2]
             )
             for s in s_iter:
-                if self.is_weighted:
-                    cl_pair = WeightedClassesPair(self.sim_mat, self.adj_mat, self.classes, r, s, self.epsilon)
-                else:
-                    cl_pair = ClassesPair(self.adj_mat, self.classes, r, s, self.epsilon)
+                ...
                 self.reduced_sim_mat[r - 1, s - 1] = cl_pair.bip_density
                 self.reduced_sim_mat[s - 1, r - 1] = cl_pair.bip_density
 ```
+
+> ⚠️ The theoretical adjacency of §3.3 ("two vertices are adjacent if the
+> corresponding classes are ε-regular with the edge density above a threshold
+> `d₀`", value unspecified in the paper) is available via
+> `drop_edges_between_irregular_pairs=True` (with `d₀ = 0`). The **default is
+> False** — R carries the Eq. 3 weights of all class pairs — following both the
+> Sperotto–Pelillo regularity-clustering template ([16]) and the Fiorucci et
+> al. code base (`dense_graph_reducer`, whose clustering driver also passes
+> `False`) that the paper's modification 2 explicitly adopts. Empirical
+> justification: with the strict Alon conditions on small real graphs nearly
+> every pair tests irregular (ε⁴·n thresholds are tiny), so an edge-dropped R
+> would be almost empty (verified: R nonzero fraction 0.0 on the smoke blobs)
+> and clustering on it impossible — the paper's strong Reg-* results are only
+> attainable with the fully weighted R.
 
 ### Lemma 2 (Komlós et al.) — structural justification; documented in `spec/reduced_graph.md`.
 
@@ -856,23 +863,18 @@ def experiment2_enhanced_vs_original(dataset_names=None, algorithms=None, out_di
 
 ### §4.2 Exp 2b — Regularity vs k-means partitioning (Fig. 11)
 
-Replaces the regularity-partitioning step with a k-means partition of the
-features, keeping all other steps identical. ✅
+Paper: "we replace the regularity partitioning method by the k-means method,
+and **keep all the other parts unchanged**." Implemented by running the
+regularity pipeline first and giving the k-means partition **the same number of
+classes** as the regularity partition (`target_k = reg_info["k"]`), with the
+same σ and the same base clustering on the reduced matrix. ✅
 
-```230:298:src/experiments.py
-def experiment2b_regularity_vs_kmeans(dataset_names=None, algorithms=None, out_dir=None, verbose=False):
-    ...
-    target_k = max(4, min(int(0.05 * n), 64))
-    for algo in algorithms:
-        ...
-        reg_labels, reg_info = enhance_clustering(
-            make_base_algorithm(algo, X=X), S, ..., epsilon=0.15, b=4, compression_rate=0.05, ...)
-        km_labels, km_info = kmeans_partition_clustering(
-            make_base_algorithm(algo, X=X), X, S, ..., k_classes=target_k)
-        reg_m = evaluate(y, reg_labels)
-        km_m = evaluate(y, km_labels)
-        rows.append({..., "reg_nmi": reg_m["nmi"], "reg_time": reg_info["total_time"],
-                     "km_nmi": km_m["nmi"], "km_time": km_info["total_time"]})
+```src/experiments.py
+    reg_labels, reg_info = enhance_clustering(..., epsilon=0.15, b=4, compression_rate=0.05, ...)
+    # "keep all the other parts unchanged": the k-means partition
+    # uses the same number of classes as the regularity partition
+    target_k = int(reg_info["k"])
+    km_labels, km_info = kmeans_partition_clustering(..., k_classes=target_k)
 ```
 
 k-means partition builder (reduced matrix from an external partition + label
@@ -950,10 +952,14 @@ Recent-algorithm reference tables (Tables 2–5, transcribed verbatim): ✅ →
 
 ## §4 Figures (plotting)
 
-- Figs. 2–5 (parameter influence) → `src/plotting.py:38:60` (`plot_parameter_influence`)
-- Figs. 7–10 (enhanced vs original) → `src/plotting.py:63:89` (`plot_enhanced_vs_original`)
-- Fig. 11 (regularity vs k-means) → `src/plotting.py:92:119` (`plot_regularity_vs_kmeans`)
-- Tables 2–5 figures (vs recent) → `src/plotting.py:121:148` (`plot_vs_recent`)
+- Figs. 2–5 (parameter influence) → `src/plotting.py:plot_parameter_influence`:
+  one figure per algorithm, three columns (ε, ϵ, b) × two rows (NMI and
+  **running time**, log scale), one curve per dataset — the paper's layout.
+- Fig. 6 (all vs selected parameters) → `src/plotting.py:plot_all_vs_selected`
+  (figure + `all_vs_selected.csv`).
+- Figs. 7–10 (enhanced vs original) → `src/plotting.py:plot_enhanced_vs_original`
+- Fig. 11 (regularity vs k-means) → `src/plotting.py:plot_regularity_vs_kmeans`
+- Tables 2–5 figures (vs recent) → `src/plotting.py:plot_vs_recent`
 
 ## CLI / entry points
 
@@ -975,52 +981,56 @@ algorithms on 5/6 subsets. ✅
 ## Gaps — what is NOT fully reproduced (honest status)
 
 These are the only deviations from a literal line-by-line reproduction. Each is
-documented in `spec/` and flagged ⚠️/❌ in the relevant section above.
+flagged ⚠️/❌ in the relevant section above.
 
 1. **❌ 4 of 20 datasets have no local data** — Appendicitis, SCC, USPS,
-   Dutchnumeral. You did not provide zips for these; `src/datasets.py:246:262`
-   falls back to `ucimlrepo` (if installed) or a synthetic stand-in matching
-   Table 1's (NP, ND, NC). Exp 1–3 skip/stand-in these four. The 16 you provided
-   all load and match Table 1 exactly. Note: the `tunadromd.zip` you provided is
-   a *different* dataset (TUANDROMD, Android malware) than the paper's
-   Dutchnumeral (MPEG-7 Dutch numerals), so it cannot be used.
+   Dutchnumeral. `src/datasets.py` tries `ucimlrepo` for Appendicitis/SCC
+   (network) and otherwise uses a synthetic stand-in matching Table 1's
+   (NP, ND, NC); USPS/Dutchnumeral are synthetic stand-ins by default (no
+   public source: USPS is not on UCI, and the provided `tunadromd.zip` is the
+   TUANDROMD Android-malware dataset, *not* the paper's MPEG-7 Dutchnumeral).
+   The 16 local datasets load and match Table 1 exactly.
 
 2. **⚠️ The 8 "recent" algorithms are not re-implemented from code.** Their
    per-dataset NMI/ACC/ARI/RI values are transcribed verbatim from Tables 2–5
-   of the paper as fixed reference columns (`src/baselines.py`). This is the
-   honest approach: they are external third-party methods, not the paper's
-   contribution. The paper's own contribution (Algorithm 1 + 4 base algorithms
-   + k-means-partitioning baseline) is fully implemented from code.
+   of the paper as fixed reference columns (`src/baselines.py`). They are
+   external third-party methods; the paper's own contribution (Algorithm 1 +
+   4 base algorithms + k-means-partitioning baseline) is fully implemented.
 
-3. **⚠️ SPRG is implemented from its public primary source (CLR, Nie et al.
-   2016), which the paper cites** — so the authors' GitHub code is **not**
-   required. `src/clustering/sprg.py` implements the CLR L2 algorithm
-   (alternating eigenvector update + row-wise simplex projection, Nie's
-   λ-heuristic, Eq. 35 initial affinity) and clusters by the connected
-   components of the learned `S`. On small/medium datasets CLR converges to
-   exactly `k` components. Two residual deviations: (a) on very large graphs
-   the λ-heuristic can stop early, so `sprg` falls back to spectral clustering
-   on the learned affinity to always return `k` labels; (b) SPRG-specific
-   tweaks beyond the published CLR basis are not in the public text, and
-   `m` defaults to 10. See `spec/base_algorithms.md`.
+3. **⚠️ Leaves 64-dim features** are not provided as a precomputed file; the zip
+   holds 1600 JPG images. `src/datasets.py` extracts a 64-dim vector per image
+   by resizing to 8×8 grayscale — an approximation of the paper's unspecified
+   64-dim features. Dimensions/labels match Table 1 exactly (1600, 64, 100).
 
-4. **⚠️ Leaves 64-dim features** are not provided as a precomputed file; the zip
-   holds 1600 JPG images. `src/datasets.py:204:227` extracts a 64-dim vector per
-   image by resizing to 8×8 grayscale — an approximation of the paper's exact
-   64-dim features (which the paper does not specify). Dimensions/labels match
-   Table 1 exactly (1600, 64, 100).
-
-5. **⚠️ Randomized refinement is not implemented** (only degree-based); see
-   `src/szemeredi/builder.py:41`. The paper uses the degree-based variant, so this
+4. **⚠️ Randomized refinement is not implemented** (only degree-based); see
+   `src/szemeredi/builder.py`. The paper uses the degree-based variant, so this
    is the chosen path, not a missing one.
 
-6. **⚠️ Fig. 6** is produced as a CSV comparison (`all_vs_selected.csv`), not a
-   pixel-identical reproduction of the paper's figure. All other figures are
-   generated as PNGs via `src/plotting.py`.
+5. **⚠️ The authors' code repository** (`github.com/dr-houjian/eval-regcluster`,
+   linked in the paper for original figures/supplementary) is no longer
+   accessible (404), so paper-silent constants could not be cross-checked
+   against it. All such constants are listed below.
 
-Everything else — every definition, equation, algorithm step, modification,
-base algorithm, metric, dataset entry, parameter grid, and experiment — is
-implemented from code as documented above.
+### Paper-silent constants and how they were resolved
+
+The paper does not specify: APC preference (→ median of positive similarities,
+the sklearn default convention), DSet weight threshold (→ `1/(1.5n)` from the
+Fiorucci et al. `dense_graph_reducer` code base; Hou et al. PR 2023 use
+`0.0001` in a different algorithm), reduced-graph density threshold `d₀`
+(→ 0; irregular-edge dropping available but off by default, see §3.3),
+data preprocessing/normalization (→ none, features as distributed in the UCI
+files), SPRG `φ`/variant/bootstrap (→ 5 / `adpt` / with replacement, see §2.1),
+and the number of k-means restarts (→ `n_init=10`). Seeds are pinned to 314 for
+reproducibility; the paper reports single/averaged runs without seed details.
+
+### Reference-PDF notes
+
+`references/` holds all 40 cited papers (1:1 with the bibliography). Two
+anomalies: `22.pdf` does not match its bibliography entry (Shi–Malik normalized
+cuts) — it is a 52-page document with ciphered Type-3 fonts (apparent Cyrillic
+content) — and `30.pdf` (Alon et al. 1994) is a pure image scan without a text
+layer. Neither affects the implementation (the Alon algorithm is implemented
+from the main paper §3.2 + the Fiorucci code base).
 
 ---
 

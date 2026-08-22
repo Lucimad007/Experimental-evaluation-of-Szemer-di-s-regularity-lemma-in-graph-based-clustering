@@ -7,41 +7,41 @@ Each takes a pairwise similarity matrix as input.
 
 ## 2.1 Spectral clustering (SPC) and SPRG
 
-**SPC.** Given the similarity matrix `S ∈ R^{n×n}`, build the (normalized) Laplacian
-and compute the first `k` eigenvectors `u_1, …, u_k` corresponding to the `k` smallest
-eigenvalues. Form `U ∈ R^{n×k}` with those eigenvectors as columns, treat each row of
-`U` as a point, and cluster with k-means. We use the Ng–Jordan–Weiss normalized
-Laplacian variant (`L_sym = I − D^{−1/2} S D^{−1/2}`), rows of `U` normalized to unit
-length, as in the standard formulation. `k` is set to the ground-truth number of
-clusters (consistent with the experimental protocol).
+**SPC.** Given the similarity matrix `S ∈ R^{n×n}`, build the **unnormalized**
+Laplacian `L = D − S` and compute the first `k` eigenvectors `u_1, …, u_k`
+corresponding to the `k` smallest eigenvalues. Form `U ∈ R^{n×k}` with those
+eigenvectors as columns, treat each row of `U` as a point (no row
+normalization), and cluster with k-means. This is the paper's verbatim §2.1
+description; the normalized variants it mentions (Shi–Malik [22], Ng–Jordan–
+Weiss [23]) are available as `variant="njw"` in `src/clustering/spectral.py`.
+`k` is set to the ground-truth number of clusters.
 
-**SPRG** (Hou et al., *Towards parameter-free clustering for real-world data*, PR
-2023). A spectral-clustering variant that *learns* a structured similarity matrix
-instead of using the Gaussian similarity. It does **not** use the `σ` parameter.
-The paper notes it performs much better than NCut but at a much larger computation
-cost. SPRG is built on the **Constrained Laplacian Rank (CLR)** model (Nie, Wang,
-Jordan & Huang, AAAI 2016), which learns a non-negative, row-stochastic affinity
-`S` whose Laplacian `L_S = D_S − (Sᵀ+S)/2` has rank `n − k` — i.e. `S` has exactly
-`k` connected components. CLR (L2) solves
+**SPRG** (Zhu, Loy & Gong, *Constructing robust affinity graphs for spectral
+clustering*, CVPR 2014 — reference **[20]** of the paper; also cited as "SPRG"
+by Hou et al. PR 2023, ref [25]). A spectral-clustering variant that *learns*
+the similarity matrix — "combining subtle similarity in discriminative feature
+subspaces" — instead of using the Gaussian similarity. It does **not** use the
+`σ` parameter and takes the ground-truth `k`. Method (equations from
+Zhu–Loy–Gong):
 
-```
-min_S  ‖S − A‖_F²   s.t.  S ≥ 0,  S 1 = 1,  rank(L_S) = n − k
-```
+1. Train a **clustering random forest** of `Tclust = 1000` trees, each on a
+   random subset of `X`, unsupervised via the pseudo two-class algorithm
+   (synthetic uniform samples labelled class 1 vs real samples class 0), with
+   Gini information-gain splits (Eq. 1–3) over `mtry = √d` candidate features
+   and mid-point thresholds; stop at ≤ `φ` real samples per node.
+2. Compute **structure-aware affinities** (Eq. 7): `a^t_ij` = (sum of shared
+   path-node weights) / (sum of longer-path node weights), with variants Bi
+   (Eq. 9–10), Unfm (Eq. 11, weights 1) and Adpt (Eq. 12–14, `w_κ = 1/|S_κ|`,
+   `1/|Λ_b̂|` at the leaf — default).
+3. Average over trees (Eq. 8) → the learned affinity `A`; cluster with SPC
+   (unnormalized) on `A` with the ground-truth `k`.
 
-by alternating (Ky Fan's theorem): (1) `F ←` `k` smallest eigenvectors of `L_S`;
-(2) for each row `i`, `s_i ← Π_Δ(a_i − (λ/2) v_i)` where `v_ij = ‖f_i−f_j‖²/2` and
-`Π_Δ` is the projection onto the probability simplex. The initial affinity `A`
-follows Eq. (35) of Nie et al. (an m-NN, distance-consistent, scale-invariant
-graph). The cluster labels are the connected components of the learned `S`
-(no k-means). `k` is the ground-truth cluster count.
-
-Implementation: `src/clustering/sprg.py` (`clr_learn`, `sprg_similarity`, `sprg`).
-Only the `k+1` smallest eigenpairs are computed per iteration (dense partial
-`eigh` for small `n`, Lanczos `eigsh` for large `n`). If the λ-heuristic stops
-early without exactly `k` components on very large graphs, `sprg` falls back to
-spectral clustering on the learned affinity so it always returns `k` labels
-(documented deviation, see `IMPLEMENTATION_PROOF.md`). SPRG-specific tweaks
-beyond the published CLR basis are not in the public text.
+Implementation: `src/clustering/sprg.py` (`forest_affinity`, `sprg`,
+`sprg_on_graph`). Paper-silent choices (`src/config.py`): `φ = 5`, variant
+`adpt`, bootstrap subsets, seed 314; `config.SPRG_TREES` can be reduced for
+fast runs. For Reg-SPRG on the reduced graph R (no features), each R-vertex is
+represented by its row of R and the forest is grown on those profiles
+(`sprg_on_graph`, `φ = 1`).
 
 ## 2.2 Affinity propagation clustering (APC)
 
@@ -68,4 +68,6 @@ form a dominant set (one cluster); the cluster is removed and the process repeat
 the remaining points. The number of clusters is determined automatically. We follow
 the replicator-dynamics implementation (Pavan & Pelillo 2007; Bulo, Pelillo & Bomze
 2011) used in the reference code, with the weight threshold
-`1/(n * 1.5)` and a stop when fewer than 5% of points remain unclustered.
+`1/(n * 1.5)` and a stop when fewer than 5% of points remain unclustered. (The
+paper does not give the threshold value; Hou et al. PR 2023 (ref [25]) use
+`0.0001` in their own DSet-based algorithm — a documented alternative choice.)
