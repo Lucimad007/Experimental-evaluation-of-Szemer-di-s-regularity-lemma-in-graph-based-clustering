@@ -15,8 +15,11 @@ is implemented here faithfully and that its claims hold on our runs:
    partitioning *enhances* clustering) is demonstrated by its own ablation.
 
 The complete line-by-line audit with code excerpts is in
-[`IMPLEMENTATION_PROOF.md`](IMPLEMENTATION_PROOF.md); computed-vs-paper tables
-land in [`RESULTS.md`](RESULTS.md) as runs complete.
+[`IMPLEMENTATION_PROOF.md`](IMPLEMENTATION_PROOF.md); per-topic executable
+proofs live in [`proof/`](proof/) (start with
+[`proof/algorithm1.md`](proof/algorithm1.md) — the paper's Algorithm 1
+pseudocode mapped line-by-line to code with a live run); computed-vs-paper
+tables land in [`RESULTS.md`](RESULTS.md) as runs complete.
 
 ---
 
