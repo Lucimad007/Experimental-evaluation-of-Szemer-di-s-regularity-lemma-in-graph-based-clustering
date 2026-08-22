@@ -72,8 +72,10 @@ def degree_based(self):
                 self.classes[difference_nodes_ordered_by_degree] = 0
         else:
             self.k += 1
+            # no irregular partner: split in two by (global) degree order
+            global_degrees = self.adj_mat.sum(1)
             s_indices_ordered_by_degree = sorted(
-                list(np.where(self.classes == s)[0]), key=lambda el: s_r_degs[el], reverse=True
+                list(np.where(self.classes == s)[0]), key=lambda el: global_degrees[el], reverse=True
             )
             if is_classes_cardinality_odd:
                 self.classes[s_indices_ordered_by_degree.pop(0)] = 0

@@ -1,16 +1,20 @@
-"""Spectral clustering: SPC (Ng–Jordan–Weiss) and SPRG (learned similarity + SPC).
+"""Spectral clustering (SPC), §2.1 of the paper.
 
-See ``spec/base_algorithms.md`` §2.1. SPC builds the normalized Laplacian
-``L_sym = I − D^{−1/2} S D^{−1/2}``, takes the ``k`` smallest eigenvectors, row-
-normalizes, and runs k-means. ``k`` is the ground-truth number of clusters.
+The paper's description, verbatim: "spectral clustering builds the unnormalized
+Laplacian L and computes the first k eigenvectors u1, u2, …, uk corresponding
+to the k smallest eigenvalues of L. Given the matrix U ∈ R^{n×k} with u1, …, uk
+as columns, we use each row of U as a data point and do clustering with
+standard methods like k-means".
 
-SPRG (Hou et al., *Towards parameter-free clustering for real-world data*, PR 2023)
-learns a robust pairwise similarity by combining subtle similarities from
-discriminative feature subspaces, then applies SPC on the learned matrix. It does
-not use the ``σ`` parameter.
+The two normalized variants the paper mentions ([22] Shi–Malik, [23] Ng–Jordan–
+Weiss) are kept available via ``variant="njw"`` (row-normalized NJW), but the
+default — and what the experiments use — is the unnormalized Laplacian.
 """
 
 import numpy as np
+import scipy.linalg
+import scipy.sparse
+import scipy.sparse.linalg
 from sklearn.cluster import KMeans
 
 
@@ -18,8 +22,24 @@ def _symmetrize(S):
     return (S + S.T) / 2.0
 
 
-def spc(sim_mat, n_clusters, random_state=314, n_init=10):
-    """Ng–Jordan–Weiss spectral clustering.
+def _k_smallest_eigenvectors(M, k):
+    """Eigenvectors of the k smallest eigenvalues of a symmetric matrix."""
+    n = M.shape[0]
+    if k >= n:
+        k = n
+    if n <= 2000 or k >= n - 2:
+        evals, eigvecs = scipy.linalg.eigh(M)
+        return eigvecs[:, :k]
+    if scipy.sparse.issparse(M):
+        _, eigvecs = scipy.sparse.linalg.eigsh(M, k=k, which="SM")
+    else:
+        M_sparse = scipy.sparse.csr_matrix(M)
+        _, eigvecs = scipy.sparse.linalg.eigsh(M_sparse, k=k, which="SM")
+    return eigvecs
+
+
+def spc(sim_mat, n_clusters, random_state=314, n_init=10, variant="unnormalized"):
+    """Spectral clustering on a pairwise similarity matrix.
 
     Parameters
     ----------
@@ -27,30 +47,36 @@ def spc(sim_mat, n_clusters, random_state=314, n_init=10):
         Non-negative symmetric similarity matrix (diagonal should be 0).
     n_clusters : int
         Number of clusters (ground-truth k).
+    variant : str
+        ``"unnormalized"`` (paper §2.1, default): ``L = D − S``, k smallest
+        eigenvectors, rows of U as data points (no row normalization).
+        ``"njw"``: normalized Laplacian ``I − D^{−1/2} S D^{−1/2}`` with row
+        normalization (Ng–Jordan–Weiss, ref [23] of the paper).
     """
     S = _symmetrize(np.asarray(sim_mat, dtype=float))
     n = S.shape[0]
-    # avoid degenerate (all-zero) degree
     d = S.sum(axis=1)
-    d_safe = np.where(d > 0, d, 1e-12)
-    D_inv_sqrt = 1.0 / np.sqrt(d_safe)
-    L_sym = np.eye(n) - (D_inv_sqrt[:, None] * S * D_inv_sqrt[None, :])
-    # symmetrize to clean up numerical asymmetry
-    L_sym = _symmetrize(L_sym)
 
-    # k smallest eigenvalues/eigenvectors of a symmetric matrix
-    eigvals, eigvecs = np.linalg.eigh(L_sym)
-    U = eigvecs[:, :n_clusters]
-    # row-normalize
-    norms = np.linalg.norm(U, axis=1, keepdims=True)
-    norms = np.where(norms > 0, norms, 1e-12)
-    U = U / norms
+    if variant == "unnormalized":
+        L = np.diag(d) - S
+        L = _symmetrize(L)
+        U = _k_smallest_eigenvectors(L, n_clusters)
+    elif variant == "njw":
+        d_safe = np.where(d > 0, d, 1e-12)
+        D_inv_sqrt = 1.0 / np.sqrt(d_safe)
+        L_sym = np.eye(n) - (D_inv_sqrt[:, None] * S * D_inv_sqrt[None, :])
+        L_sym = _symmetrize(L_sym)
+        U = _k_smallest_eigenvectors(L_sym, n_clusters)
+        norms = np.linalg.norm(U, axis=1, keepdims=True)
+        norms = np.where(norms > 0, norms, 1e-12)
+        U = U / norms
+    else:
+        raise ValueError(f"unknown SPC variant: {variant}")
 
     km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init=n_init)
     labels = km.fit_predict(U)
     return labels
 
 
-# SPRG (learned structured affinity via the Constrained Laplacian Rank model) lives
-# in ``clustering.sprg``; re-exported from ``clustering.__init__``.
-
+# SPRG (clustering-forest affinity + SPC, Zhu–Loy–Gong CVPR 2014 = ref [20])
+# lives in ``clustering.sprg``; re-exported from ``clustering.__init__``.

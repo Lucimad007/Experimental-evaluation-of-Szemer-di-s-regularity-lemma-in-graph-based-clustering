@@ -34,8 +34,7 @@ def acc(labels_true, labels_pred):
     # build confusion matrix
     unique_t, t_idx = np.unique(labels_true, return_inverse=True)
     unique_p, p_idx = np.unique(labels_pred, return_inverse=True)
-    K = max(unique_t.size, unique_p.size)
-    cm = np.zeros((K, K) if False else (unique_t.size, unique_p.size), dtype=np.int64)
+    cm = np.zeros((unique_t.size, unique_p.size), dtype=np.int64)
     for t, p in zip(t_idx, p_idx):
         cm[t, p] += 1
     # maximize the diagonal via Hungarian on -cm

@@ -61,7 +61,10 @@ def alon3(self, cl_pair, fast_convergence=True):
     if fast_convergence:
         Y_indices = cl_pair.find_Y(nh_dev_mat)
         if not list(Y_indices):
-            # Y spurious: treat as irregular (no witness built)
+            # Y spurious: irregularity is suspected but no witness can be built
+            # (empty certificate) — the driver therefore tallies the pair as
+            # regular. This matches Fiorucci et al.'s dense_graph_reducer, the
+            # implementation the paper's modification 2 builds on.
             return True, [[], []], [[], []]
         Y_degrees = s_degrees[Y_indices]
         Yp_indices = cl_pair.find_Yp(Y_degrees, Y_indices)

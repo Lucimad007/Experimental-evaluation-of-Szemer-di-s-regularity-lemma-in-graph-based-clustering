@@ -64,6 +64,7 @@ def enhance_clustering(
     random_initialization=False,
     random_refinement=False,
     drop_edges_between_irregular_pairs=False,
+    stop_rule="algorithm1",
     verbose=False,
 ):
     """Run Algorithm 1 to enhance ``base_algorithm`` on ``sim_mat``.
@@ -80,6 +81,18 @@ def enhance_clustering(
         Ground-truth number of clusters, used for SPC/SPRG; ``None`` for APC/DSet.
     epsilon, b, compression_rate : float, int, float
         Regularity-partitioning parameters ``ε``, ``b``, ``ϵ``.
+    drop_edges_between_irregular_pairs : bool
+        If True, R keeps weights only for ε-regular pairs (the theoretical
+        adjacency of §3.3, with the unspecified d₀ treated as 0). Default
+        False: the practical pipeline — following Sperotto–Pelillo's original
+        regularity-clustering template and the Fiorucci et al. code base the
+        paper's modification 2 adopts — builds R as the fully weighted matrix
+        of Eq. 3 densities. (With the strict Alon conditions on small real
+        graphs almost every pair tests irregular, so an edge-dropped R would
+        be nearly empty and clustering on it impossible.)
+    stop_rule : str
+        Partition-loop stopping rule: ``"algorithm1"`` (default, Algorithm 1
+        line 12) or ``"theoretical"`` (§3.2 Step 3).
 
     Returns
     -------
@@ -99,7 +112,7 @@ def enhance_clustering(
         random_refinement=random_refinement,
         drop_edges_between_irregular_pairs=drop_edges_between_irregular_pairs,
     )
-    alg.run(b=b, compression_rate=compression_rate, verbose=verbose)
+    alg.run(b=b, compression_rate=compression_rate, verbose=verbose, stop_rule=stop_rule)
     compression_time = time.time() - t0
 
     k = int(alg.k)

@@ -107,12 +107,25 @@ class SzemerediRegularityLemma:
         self.index_vec.append(index)
         return num_of_irregular_pairs
 
-    def check_partition_regularity(self, num_of_irregular_pairs):
-        """Step 3: is the partition regular? (≤ ε·C(k,2) irregular pairs)."""
-        return num_of_irregular_pairs <= self.epsilon * ((self.k * (self.k - 1)) / 2.0)
+    def check_partition_regularity(self, num_of_irregular_pairs, stop_rule="algorithm1"):
+        """Stopping rule of the partitioning loop.
+
+        ``"algorithm1"`` (default) is the practical rule of Algorithm 1
+        (line 12): break as soon as the number of non-ε-regular pairs drops
+        below half of all pairs, i.e. ``n_ir < k(k−1)/2`` — no ε factor.
+        ``"theoretical"`` is the rule of §3.2 Step 3: the partition is regular
+        when at most ``ε·C(k,2)`` pairs are not verified as regular.
+        """
+        total_pairs = (self.k * (self.k - 1)) / 2.0
+        if stop_rule == "algorithm1":
+            return num_of_irregular_pairs < total_pairs
+        if stop_rule == "theoretical":
+            return num_of_irregular_pairs <= self.epsilon * total_pairs
+        raise ValueError(f"unknown stop rule: {stop_rule}")
 
     # --------------------------------------------------------------------- run
-    def run(self, b=2, compression_rate=0.05, iteration_by_iteration=False, verbose=False):
+    def run(self, b=2, compression_rate=0.05, iteration_by_iteration=False, verbose=False,
+            stop_rule="algorithm1"):
         """Run the Alon algorithm and return the reduced similarity matrix.
 
         Parameters
@@ -124,6 +137,9 @@ class SzemerediRegularityLemma:
             Maximum compression ratio ``ϵ = |R|/|G|``. If in ``(0, 1]`` the
             algorithm stops when ``k > int(ϵ·|V|)`` (modification 3); if ``> 1.0``
             it is interpreted as an absolute cap on ``k``.
+        stop_rule : str
+            ``"algorithm1"`` (paper's Algorithm 1, default) or ``"theoretical"``
+            (§3.2 Step 3).
         """
         np.random.seed(314)
         random.seed(314)
@@ -134,12 +150,17 @@ class SzemerediRegularityLemma:
             max_k = int(compression_rate)
         else:
             raise ValueError("incorrect compression rate. Only float greater than 0.0 are accepted")
+        max_k = max(max_k, b)
 
         iteration = 0
         if verbose:
             print("Performing partition initialization")
         self.partition_initialization(self, b)
 
+        # Algorithm 1 lines 3-17. The pair check runs at the top of each pass
+        # so that, when the loop ends (via the break rule of line 12 or the
+        # ϵ > k/n condition of line 3), the reduced graph is built from pairs
+        # verified at the *final* partition.
         while True:
             self.certs_compls_list = []
             self.regularity_list = []
@@ -172,11 +193,14 @@ class SzemerediRegularityLemma:
                 print("conditions verified = " + str(self.condition_verified))
                 print("Performing partition regularity check")
 
-            if self.check_partition_regularity(num_of_irregular_pairs):
+            if self.check_partition_regularity(num_of_irregular_pairs, stop_rule=stop_rule):
                 if verbose:
                     print("The partition is regular")
                 break
             if self.k >= max_k:
+                # Algorithm 1 line 3's while condition ϵ > k_i/n is no longer
+                # satisfied: stop iterating (modification 3, "terminate when
+                # the class size is sufficiently small").
                 if verbose:
                     print(
                         "Either the classes cardinality is too low or the number of "
