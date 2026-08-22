@@ -6,6 +6,8 @@ identifies exemplars automatically (no ``k`` required). Uses scikit-learn's
 standard robust default.
 """
 
+import warnings
+
 import numpy as np
 from sklearn.cluster import AffinityPropagation
 
@@ -20,16 +22,23 @@ def apc(sim_mat, random_state=314, max_iter=500, convergence_iter=15, damping=0.
     S = (S + S.T) / 2.0
     preferences = np.full(S.shape[0], np.median(S[S > 0]) if np.any(S > 0) else 0.0)
 
-    model = AffinityPropagation(
-        affinity="precomputed",
-        preference=preferences,
-        random_state=random_state,
-        max_iter=max_iter,
-        convergence_iter=convergence_iter,
-        damping=damping,
-        copy=True,
-    )
-    labels = model.fit_predict(S)
+    # degenerate inputs (e.g. an all-zero reduced graph) make sklearn emit a
+    # UserWarning per call; the fallback behaviour (single arbitrary exemplar)
+    # is fine for our purposes, so silence only that warning
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="All samples have mutually equal similarities"
+        )
+        model = AffinityPropagation(
+            affinity="precomputed",
+            preference=preferences,
+            random_state=random_state,
+            max_iter=max_iter,
+            convergence_iter=convergence_iter,
+            damping=damping,
+            copy=True,
+        )
+        labels = model.fit_predict(S)
     # sklearn may return -1 for non-converged points; remap to a valid label
     labels = np.asarray(labels, dtype=int)
     if (labels < 0).any():

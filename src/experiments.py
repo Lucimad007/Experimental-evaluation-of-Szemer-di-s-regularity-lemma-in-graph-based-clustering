@@ -106,9 +106,12 @@ def experiment1_parameter_influence(
                                 "nmi": m["nmi"], "acc": m["acc"], "ari": m["ari"], "ri": m["ri"],
                                 "time": info["total_time"], "k": info["k"],
                             })
+        # checkpoint after each dataset: a crash preserves all completed work
+        pd.DataFrame(rows).to_csv(out_dir / "raw_runs_partial.csv", index=False)
 
     df = pd.DataFrame(rows)
     df.to_csv(out_dir / "raw_runs.csv", index=False)
+    (out_dir / "raw_runs_partial.csv").unlink(missing_ok=True)
     _summarize_influence(df, out_dir)
     _summarize_all_vs_selected(df, out_dir)
     return df
