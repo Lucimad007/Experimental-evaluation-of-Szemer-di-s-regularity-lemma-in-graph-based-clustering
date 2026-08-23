@@ -91,6 +91,23 @@ Full per-dataset tables: `RESULTS.md` (written by `python -m src.make_results`).
 block structure (majority-pure classes; intra-block density ≈0.8 vs ≈0.2–0.35
 between blocks) — the structure-preserving compression the lemma guarantees.
 
+## 2b. The paper's empirical claims, checked one by one
+
+`python -m proof.verify_claims` re-verifies every §4 claim from our computed
+results (re-run as more datasets land). Status on the current data
+(12-dataset exp2/exp2b, partial exp1 grids):
+
+| Claim (paper) | Result |
+|---|---|
+| C1 Enhancement improves clustering (Figs 7–10; "better on 19/20") | **PASS** — 40/48 runs, mean NMI 0.375 → 0.534 |
+| C2 Regularity beats k-means partitioning (Fig. 11) | **PASS** — 36/48 runs |
+| C3 Reg-* beats the 8 recent algorithms (Tables 2–5) | **PASS** — SPC/APC/DSet each beat all 8 on 3/4 datasets so far; SPRG 1/4 (its on-graph adaptation is our one documented SPRG deviation) |
+| C4 ε ∈ 0.1–0.2 recommended; degradation above 0.2 | **PARTIAL** — no degradation observed; curves nearly flat (±0.005 aggregate, ±0.02 per dataset), slight edge to larger ε on 3/5 datasets. In the reference-faithful operationalization ε has weak influence (the ε⁴ thresholds certify nearly all pairs irregular for any ε), so the partition barely depends on ε. The recommended range stays within 0.005 of the best. |
+| C5 ϵ best ≤ 0.1; 0.01 never best; 0.2 costs time without gains | **PASS** — best at 0.03; 0.01 worst-but-one; 0.2 lowest NMI and 1.8× the median time |
+| C6 b ≤ 16 suffices; b > 16 doesn't help | **PASS on 4/5 datasets** — the aggregate exception is Appendicitis, where large b (classes of 1–3 points) *recovers* NMI ≈ 0.87 ≈ the paper's 0.82 (see divergence note below) |
+| C7 larger ε → less time; larger ϵ → more time | **PASS** — 2.23s (ε=0.05) → 1.77s (ε=0.6); ϵ=0.2 costs the most |
+| C8 recommended ranges rarely degrade vs all parameters (Fig. 6) | **PASS** — selected-range mean 0.360 vs all-parameter 0.341 (selected is *better*) |
+
 ## 3. Scope, honestly
 
 - **Run here**: the 12 small datasets (n ≤ 1000) — full §4.1 parameter grid
