@@ -1,15 +1,10 @@
-"""Step 4 (refinement) of the Alon algorithm.
+"""§3.2 Step 4 (refinement), with modification 1.
 
-Refines the current partition by splitting classes involved in irregular pairs.
-For each irregular pair ``(s, r)`` the certificate/complement of each side is used
-to move the smaller of the two sets into the exceptional class ``V0`` (label 0);
-the remaining nodes of the larger side that exceed the new class cardinality are
-also moved to ``V0``. When a class has no irregular partner it is split in two by
-degree order. After processing all classes, leftover ``V0`` nodes are grouped into
-new classes of the current cardinality.
+Original Alon Step 4 produces ``1 + k·4^k`` classes. The paper instead limits
+each class to at most one irregular partner so Step 4 splits into a **constant**
+number of subclasses (here: class cardinality is halved, k roughly doubles).
 
-This is the degree-based refinement from Fiorucci et al.'s
-``dense_graph_reducer``; see ``spec/regularity_partitioning.md``.
+Degree-based split of certificates follows Fiorucci et al. [28] (modification 2).
 """
 
 import random
@@ -31,10 +26,11 @@ def _get_s_r_degrees(self, s, r):
 
 
 def degree_based(self):
+    """§3.2 Step 4: Refine P_i → P_{i+1}. Modification 1: ≤1 irregular partner."""
     to_be_refined = list(range(1, self.k + 1))
     irregular_r_indices = []
     is_classes_cardinality_odd = self.classes_cardinality % 2 == 1
-    self.classes_cardinality //= 2
+    self.classes_cardinality //= 2  # mod 1: constant split (not Alon's k·4^k)
 
     while to_be_refined:
         s = to_be_refined.pop(0)
@@ -45,7 +41,7 @@ def degree_based(self):
         if irregular_r_indices:
             np.random.seed(314)
             random.seed(314)
-            chosen = random.choice(irregular_r_indices)
+            chosen = random.choice(irregular_r_indices)  # modification 1: keep one partner
             to_be_refined.remove(chosen)
             irregular_r_indices = []
 
@@ -93,6 +89,7 @@ def degree_based(self):
 
     C0_cardinality = int(np.sum(self.classes == 0))
     if C0_cardinality > self.epsilon * self.N:
+        # paper Def. 2: a regular partition needs |V0| < ε|V|
         raise RuntimeError(
             "V0 exceeded the epsilon*n bound (not enough nodes in C0 to create "
             "a new class). Try to increase epsilon or decrease the number of "

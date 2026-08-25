@@ -12,6 +12,7 @@ def build_regularity_lemma(
     random_initialization,
     random_refinement,
     drop_edges_between_irregular_pairs,
+    density_threshold=0,
 ):
     """Construct a configured ``SzemerediRegularityLemma`` instance.
 
@@ -32,8 +33,14 @@ def build_regularity_lemma(
     drop_edges_between_irregular_pairs : bool
         If True, the reduced matrix keeps only regular pairs; otherwise it is
         fully connected (all pairs contribute their density).
+    density_threshold : float or str
+        ``d₀`` of §3.3: zero Eq. 3 weights at or below this value (see
+        ``apply_density_threshold``). Default 0 keeps every pair density.
     """
-    alg = SzemerediRegularityLemma(sim_mat, epsilon, is_weighted, drop_edges_between_irregular_pairs)
+    alg = SzemerediRegularityLemma(
+        sim_mat, epsilon, is_weighted, drop_edges_between_irregular_pairs,
+        density_threshold=density_threshold,
+    )
 
     alg.partition_initialization = (
         partition_initialization.random if random_initialization else partition_initialization.degree_based
@@ -41,6 +48,7 @@ def build_regularity_lemma(
     alg.refinement_step = refinement_step.degree_based  # randomized refinement not implemented
 
     if kind == "alon":
+        # paper: "we use the one by Alon et al. in our experiments"
         alg.conditions = [conditions.alon1, conditions.alon2, conditions.alon3]
     elif kind == "frieze_kannan":
         alg.conditions = [conditions.frieze_kannan]

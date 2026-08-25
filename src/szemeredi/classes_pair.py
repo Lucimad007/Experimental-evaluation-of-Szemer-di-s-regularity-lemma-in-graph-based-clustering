@@ -32,7 +32,7 @@ class ClassesPair:
         return (self.bip_adj_mat.sum(0) + self.bip_adj_mat.sum(1)).sum() / (2.0 * self.n)
 
     def compute_bip_density(self):
-        """Density = edges / (n*n), i.e. Eq. (2) with |A|=|B|=n."""
+        # paper Eq. (2): d(A,B) = e(A,B) / (|A||B|)  — unweighted reduced-graph weight
         return float(self.bip_adj_mat.sum()) / (self.n ** 2.0)
 
     def classes_vertices_degrees(self):
@@ -63,7 +63,7 @@ class ClassesPair:
         for i in range(y_card_thresh, self.n):
             outer_sum += inner_sums[inner_sums_indices[i]]
             sigma_y = outer_sum / (i ** 2.0)
-            if sigma_y >= ((self.epsilon ** 3.0) / 2.0) * self.n:
+            if sigma_y >= ((self.epsilon ** 3.0) / 2.0) * self.n:  # Fiorucci/Alon: σ(Y) ≥ (ε³/2) n
                 return inner_sums_indices[0:i]
         return np.array([])
 
@@ -80,7 +80,7 @@ class ClassesPair:
         return int(np.argmax(sums))
 
     def find_s_cert_and_compl(self, nh_dev_mat, y0, Yp_indices):
-        outliers_in_s = set(np.where(nh_dev_mat[y0, :] > 2.0 * (self.epsilon ** 4.0) * self.n)[0])
+        outliers_in_s = set(np.where(nh_dev_mat[y0, :] > 2.0 * (self.epsilon ** 4.0) * self.n)[0])  # 2ε⁴ n
         outliers_in_Yp = list(set(Yp_indices) & outliers_in_s)
         cert = list(self.index_map[1][outliers_in_Yp])
         compl = [self.index_map[1][i] for i in range(self.n) if i not in outliers_in_Yp]
@@ -94,7 +94,7 @@ class ClassesPair:
 
 
 class WeightedClassesPair(ClassesPair):
-    """Weighted variant: carries the similarity matrix for Eq. (3) density."""
+    """Paper Eq. (3): reduced-graph edge weight = mean original similarity between two classes."""
 
     def __init__(self, sim_mat, adj_mat, classes, r, s, epsilon):
         self.r = r
@@ -102,6 +102,7 @@ class WeightedClassesPair(ClassesPair):
         self.epsilon = epsilon
         self.index_map = np.where(classes == r)[0]
         self.index_map = np.vstack((self.index_map, np.where(classes == s)[0]))
+        # |X|×|Y| block of original similarities = all w(x_i, y_j) in paper Eq. (3)
         self.bip_sim_mat = sim_mat[np.ix_(self.index_map[0], self.index_map[1])]
         self.bip_adj_mat = adj_mat[np.ix_(self.index_map[0], self.index_map[1])]
         self.n = self.bip_sim_mat.shape[0]
@@ -112,7 +113,8 @@ class WeightedClassesPair(ClassesPair):
         return (self.bip_sim_mat.sum(0) + self.bip_sim_mat.sum(1)).sum() / (2.0 * self.n)
 
     def compute_bip_density(self):
-        """Weighted density = sum of weights / (n*n), i.e. Eq. (3) with |X|=|Y|=n."""
+        # paper Eq. (3): dw(X,Y) = Σ_i Σ_j w(x_i,y_j) / (|X||Y|)
+        # equitable partition ⇒ |X|=|Y|=n, so this is sum(w) / n²
         return self.bip_sim_mat.sum() / (self.n ** 2.0)
 
     def find_r_cert_and_compl(self, y0):

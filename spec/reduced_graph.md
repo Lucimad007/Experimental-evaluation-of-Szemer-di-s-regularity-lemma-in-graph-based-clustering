@@ -38,5 +38,7 @@ doing clustering on `R` instead of `G`.
   common class cardinality (matches Eq. 3 with `|X| = |Y| = n`).
 - `drop_edges_between_irregular_pairs` controls whether the reduced matrix is fully
   connected (all pairs) or only regular pairs. The paper builds `R` from regular
-  pairs with density above `d0`; the default behaviour follows the reference
-  implementation (fully connected reduced matrix unless the flag is set).
+  pairs with density above `d0` (Lemma 2: `d0 > ε`; the numeric value is
+  unspecified). `density_threshold` zeros Eq. 3 weights at or below a float or an
+  adaptive name (`p90`, `p95`, `mean`, `median`). Default `d0 = 0` keeps every
+  pair density; Exp 2/3 search `d0` for APC/DSet.

@@ -37,8 +37,9 @@ def main():
 
     print(f"\n[lines 1-2] initial partition: b={b} classes, |V1|=n//b={n}//{b}={n // b}, "
           f"|V0|={int((alg.classes == 0).sum())} < b (equitable, V0 exceptional)")
-    print(f"[line 3]   loop condition eps > k_i/n: k stops when k >= int(eps*n) = "
-          f"int({cr}*{n}) = {int(cr * n)}")
+    print(f"[line 3]   while ϵ > k_i/n: ϵ={cr}, n={n}; k_trace={alg.k_trace}; "
+          f"final k={alg.k}, k/n={alg.k / float(n):.4f} "
+          f"(loop entered iff ϵ > k/n; not k >= int(ϵ n)={int(cr * n)})")
     print(f"[lines 4-17] partition evolution (k_i, class cardinality) per iteration:")
     print(f"            final k = {alg.k}, class cardinality = {alg.classes_cardinality}")
     print(f"[line 18]  reduced graph R: shape {alg.reduced_sim_mat.shape}, "

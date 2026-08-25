@@ -32,3 +32,15 @@ show the influence of the third. Example: for `ε = 0.1`, average NMI over all
 - **b**: `b > 16` does not save running time (compensation in later iterations
   outweighs skipped iterations) and does not improve results. With `b ≤ 16` results
   vary in a complex pattern; recommend `b ≤ 16`.
+
+## Paper-silent knobs searched in Exp 2 / Exp 3 (best NMI)
+
+These are not in the paper's σ / ε / ϵ / b grids. They complete algorithms the
+paper specifies only qualitatively, and are searched only for the *enhanced*
+(Reg-*) runs — original APC/DSet keep the Frey–Dueck median and `1/(1.5 n)`.
+
+| Knob | Algorithms | Values | Source |
+|------|------------|--------|--------|
+| APC preference quantile | APC | {50, 90, 95, 99} | Frey–Dueck [10]: shared preference may be the median or varied for more/fewer clusters |
+| DSet support cutoff | DSet | {`None`=`1/(1.5n)`, `rel50`, `rel80`, `rel95`} | §2.3 "greater than a threshold" (value unnamed) |
+| Reduced-graph `d₀` | APC, DSet | {0, `p90`, `p95`} | §3.3 / Lemma 2: edges only if density > `d₀` (value unnamed). SPC/SPRG keep `d₀=0` |

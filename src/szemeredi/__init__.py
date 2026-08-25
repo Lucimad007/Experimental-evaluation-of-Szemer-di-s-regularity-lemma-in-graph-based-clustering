@@ -10,7 +10,7 @@ practical modifications described in §3.2 of the paper:
 See ``spec/regularity_partitioning.md`` and ``spec/reduced_graph.md``.
 """
 
-from .regularity_lemma import SzemerediRegularityLemma
+from .regularity_lemma import SzemerediRegularityLemma, apply_density_threshold
 from .builder import build_regularity_lemma
 
-__all__ = ["SzemerediRegularityLemma", "build_regularity_lemma"]
+__all__ = ["SzemerediRegularityLemma", "build_regularity_lemma", "apply_density_threshold"]

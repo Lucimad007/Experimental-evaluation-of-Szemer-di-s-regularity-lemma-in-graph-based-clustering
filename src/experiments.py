@@ -20,10 +20,16 @@ from tqdm import tqdm
 
 from . import config
 from .datasets import load_dataset
-from .enhanced import enhance_clustering, kmeans_partition_clustering
+from .enhanced import (
+    assign_from_reduced,
+    build_reduced_graph,
+    enhance_clustering,
+    kmeans_partition_clustering,
+)
 from .enhanced.similarity import SIGMA_GRID, gaussian_similarity
 from .metrics import evaluate
 from .runners import make_base_algorithm, original_graph, run_original
+from .szemeredi import apply_density_threshold
 
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -33,9 +39,122 @@ def _needs_sigma(name):
     return name in ("SPC", "APC", "DSet")
 
 
+def _density_thresholds_for(algo):
+    # paper §3.3 d₀ is unnamed. We grid-search it only for APC/DSet.
+    # SPC/SPRG: always d₀=0 (full Eq. 3 R) — a sparse R wrecks the Laplacian.
+    if algo in ("APC", "DSet"):
+        return config.DENSITY_THRESHOLD_GRID
+    return (0,)
+
+
+def _apc_quantiles_for(algo):
+    if algo == "APC":
+        return config.APC_PREFERENCE_QUANTILE_GRID
+    return (50,)
+
+
+def _dset_thresholds_for(algo):
+    if algo == "DSet":
+        return config.DSET_THRESHOLD_GRID
+    return (None,)
+
+
+def _iter_enhanced_settings(algo, n, epsilon_grid, compression_grid, b_grid, sigma_grid):
+    """Cartesian product of paper grids plus paper-silent APC/DSet knobs."""
+    sigmas = sigma_grid if _needs_sigma(algo) else [None]
+    bs = [b for b in (b_grid or config.B_RECOMMENDED) if b < n]
+    for sigma, eps, cr, b, d0, pref, dt in itertools.product(
+        sigmas,
+        epsilon_grid,
+        compression_grid,
+        bs,
+        _density_thresholds_for(algo),
+        _apc_quantiles_for(algo),
+        _dset_thresholds_for(algo),
+    ):
+        yield {
+            "sigma": sigma,
+            "epsilon": eps,
+            "compression": cr,
+            "b": b,
+            "density_threshold": d0,
+            "preference_quantile": pref,
+            "weight_threshold": dt,
+        }
+
+
 def _graph_for(algo, X, sigma, n_clusters=None):
     """Original graph G for ``algo``: Gaussian(σ) for SPC/APC/DSet, learned for SPRG."""
     return original_graph(algo, X, sigma, n_clusters=n_clusters)
+
+
+def _eval_on_reduced(algo, S, y, n_clusters, R, classes, part_info, pref, dset_t):
+    """Cluster an already-built R and map labels back. Returns (metrics, info) or None."""
+    k = int(part_info["k"])
+    fn = make_base_algorithm(
+        algo, preference_quantile=pref, weight_threshold=dset_t
+    )
+    t1 = time.time()
+    try:
+        if algo in ("SPC", "SPRG"):
+            if n_clusters is None or k < n_clusters:
+                return None
+            reduced_labels = fn(R, n_clusters)
+        else:
+            reduced_labels = fn(R)
+    except Exception:
+        return None
+    clustering_time = time.time() - t1
+    labels = assign_from_reduced(S, classes, reduced_labels, k)
+    m = evaluate(y, labels)
+    info = dict(part_info)
+    info["clustering_time"] = clustering_time
+    info["total_time"] = part_info["compression_time"] + clustering_time
+    return m, info
+
+
+def _best_over_enhanced_grid(algo, X, y, n_clusters, epsilon_grid, compression_grid,
+                             b_grid, sigma_grid, verbose=False):
+    """Best-NMI enhanced run, caching the regularity partition per (σ, ε, ϵ, b, d₀)."""
+    n = len(y)
+    best = None
+    best_nmi = -1.0
+    best_info = None
+    best_st = None
+    cache = {}
+    S_cache = {}
+    for st in _iter_enhanced_settings(algo, n, epsilon_grid, compression_grid, b_grid, sigma_grid):
+        sk = st["sigma"]
+        if sk not in S_cache:
+            S_cache[sk] = _graph_for(algo, X, sk, n_clusters)
+        S = S_cache[sk]
+        key = (st["sigma"], st["epsilon"], st["compression"], st["b"])
+        if key not in cache:
+            try:
+                cache[key] = build_reduced_graph(
+                    S, st["epsilon"], st["b"], st["compression"],
+                    density_threshold=0, verbose=verbose,
+                )
+            except Exception:
+                cache[key] = None
+        packed = cache[key]
+        if packed is None:
+            continue
+        R_full, classes, part_info = packed
+        R = apply_density_threshold(R_full, st["density_threshold"])
+        got = _eval_on_reduced(
+            algo, S, y, n_clusters, R, classes, part_info,
+            st["preference_quantile"], st["weight_threshold"],
+        )
+        if got is None:
+            continue
+        m, info = got
+        if m["nmi"] > best_nmi:
+            best_nmi = m["nmi"]
+            best = m
+            best_info = info
+            best_st = dict(st)
+    return best, best_info, best_st
 
 
 def _b_grid_for(n, b_grid=None):
@@ -226,35 +345,34 @@ def experiment2_enhanced_vs_original(
                     best_sigma = sigma
             if best_orig is None:
                 continue
-            S = _graph_for(algo, X, best_sigma, n_clusters)
-            # enhanced with recommended params (best over the recommended grid)
-            best_enh = None
-            best_enh_nmi = -1
-            for eps in config.EPSILON_RECOMMENDED:
-                for cr in config.COMPRESSION_RECOMMENDED:
-                    for b in config.B_RECOMMENDED:
-                        if b >= n:
-                            continue
-                        try:
-                            labels, info = enhance_clustering(
-                                make_base_algorithm(algo, X=X),
-                                S,
-                                n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
-                                epsilon=eps, b=b, compression_rate=cr, verbose=verbose,
-                            )
-                        except Exception:
-                            continue
-                        m = evaluate(y, labels)
-                        if m["nmi"] > best_enh_nmi:
-                            best_enh_nmi = m["nmi"]
-                            best_enh = (labels, m, info)
+            # enhanced: best over σ × recommended (ε, ϵ, b) and paper-silent
+            # APC/DSet knobs (d₀, preference quantile, DSet threshold). σ is
+            # searched independently of the original algorithm — Tables 2–5
+            # report the best enhanced config, not the original's σ.
+            best_enh, best_info, best_st = _best_over_enhanced_grid(
+                algo, X, y, n_clusters,
+                config.EPSILON_RECOMMENDED,
+                config.COMPRESSION_RECOMMENDED,
+                config.B_RECOMMENDED,
+                SIGMA_GRID if _needs_sigma(algo) else [None],
+                verbose=verbose,
+            )
             if best_enh is None:
                 continue
             rows.append({
                 "dataset": ds_name, "algo": algo,
-                "orig_nmi": best_orig[1]["nmi"], "orig_time": best_orig[2],
-                "enh_nmi": best_enh[1]["nmi"], "enh_time": best_enh[2]["total_time"],
-                "enh_k": best_enh[2]["k"],
+                "orig_nmi": best_orig[1]["nmi"], "orig_acc": best_orig[1]["acc"],
+                "orig_time": best_orig[2],
+                "enh_nmi": best_enh["nmi"], "enh_acc": best_enh["acc"],
+                "enh_time": best_info["total_time"],
+                "enh_k": best_info["k"],
+                "enh_sigma": best_st["sigma"],
+                "enh_epsilon": best_st["epsilon"],
+                "enh_compression": best_st["compression"],
+                "enh_b": best_st["b"],
+                "enh_d0": best_st["density_threshold"],
+                "enh_pref_q": best_st["preference_quantile"],
+                "enh_dset_t": best_st["weight_threshold"],
             })
         # checkpoint after each dataset: a crash preserves all completed work
         pd.DataFrame(rows).to_csv(out_dir / "enhanced_vs_original_partial.csv", index=False)
@@ -356,34 +474,19 @@ def experiment2b_regularity_vs_kmeans(
 
 # --------------------------------------------------------------------- Exp 3
 def _best_enhanced_metrics(algo, X, y, n_clusters, verbose=False):
-    """Best enhanced (Reg-*) metrics over the recommended (ε, ϵ, b, σ) grid.
+    """Best enhanced (Reg-*) metrics over the recommended (ε, ϵ, b, σ) grid
+    plus paper-silent APC/DSet knobs (d₀, preference quantile, DSet threshold).
 
     Returns a dict with nmi/acc/ari/ri at the best-NMI configuration, or None.
     """
-    n = len(y)
-    sigmas = SIGMA_GRID if _needs_sigma(algo) else [1.0]
-    best = None
-    best_nmi = -1.0
-    for sigma in sigmas:
-        S = _graph_for(algo, X, sigma, n_clusters)
-        for eps in config.EPSILON_RECOMMENDED:
-            for cr in config.COMPRESSION_RECOMMENDED:
-                for b in config.B_RECOMMENDED:
-                    if b >= n:
-                        continue
-                    try:
-                        labels, info = enhance_clustering(
-                            make_base_algorithm(algo, X=X),
-                            S,
-                            n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
-                            epsilon=eps, b=b, compression_rate=cr, verbose=verbose,
-                        )
-                    except Exception:
-                        continue
-                    m = evaluate(y, labels)
-                    if m["nmi"] > best_nmi:
-                        best_nmi = m["nmi"]
-                        best = m
+    best, _, _ = _best_over_enhanced_grid(
+        algo, X, y, n_clusters,
+        config.EPSILON_RECOMMENDED,
+        config.COMPRESSION_RECOMMENDED,
+        config.B_RECOMMENDED,
+        SIGMA_GRID if _needs_sigma(algo) else [None],
+        verbose=verbose,
+    )
     return best
 
 

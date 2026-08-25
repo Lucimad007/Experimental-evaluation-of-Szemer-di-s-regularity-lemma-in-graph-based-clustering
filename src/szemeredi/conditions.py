@@ -1,15 +1,13 @@
-"""Regularity / irregularity conditions for a class pair.
+"""§3.2 Step 2: regularity / irregularity conditions for a class pair.
 
-Implements the three Alon et al. conditions and the Frieze–Kannan condition used to
-check whether a bipartite class pair is ``ε``-regular or to produce a certificate
-witnessing its irregularity. Each condition callable has signature
-``cond(self, cl_pair) -> (is_verified, cert_pair, compl_pair)`` where
-``cert_pair = [cert_r, cert_s]`` and ``compl_pair = [compl_r, compl_s]``.
+The paper's operational test: verify (V_r, V_s) as ε-regular, or exhibit
+witnesses X ⊂ V_r, Y ⊂ V_s with |X|,|Y| ≥ (ε⁴/16)·n and
+|d(X,Y)−d(V_r,V_s)| ≥ ε⁴. Alon et al. [30] give three sufficient conditions
+that construct those witnesses; modification 2 uses Fiorucci et al. [28] for
+the greedy certificate (condition 3).
 
-A pair is reported **irregular** when ``cert_pair[0]`` (the r-certificate) is
-non-empty; an empty certificate means "regular / no witness found".
-
-See ``spec/regularity_partitioning.md``.
+Each callable: ``cond(self, cl_pair) -> (is_verified, cert_pair, compl_pair)``.
+A pair is **irregular** when ``cert_pair[0]`` is non-empty.
 """
 
 import math
@@ -19,20 +17,23 @@ import scipy.sparse.linalg
 
 
 def alon1(self, cl_pair):
-    """Condition 1 (regular): average degree below ε³·n."""
-    return cl_pair.bip_avg_deg < (self.epsilon ** 3.0) * cl_pair.n, [[], []], [[], []]
+    """Alon condition 1: verified ε-regular if average degree < ε³·n."""
+    return cl_pair.bip_avg_deg < (self.epsilon ** 3.0) * cl_pair.n, [[], []], [[], []]  # paper/Alon: ε³ n
 
 
 def alon2(self, cl_pair):
-    """Condition 2 (irregular): many s-vertices deviating from the average degree."""
+    """Alon condition 2: irregular if ≥ (1/16)ε⁴·n vertices deviate by > ε⁴·n.
+
+    Witness sizes match §3.2 Step 2: |X| = n ≥ (ε⁴/16)n, |Y| = #deviators.
+    """
     certs = [[], []]
     compls = [[], []]
     s_vertices_degrees = cl_pair.classes_vertices_degrees()[1, :]
-    deviation_threshold = (self.epsilon ** 4.0) * cl_pair.n
+    deviation_threshold = (self.epsilon ** 4.0) * cl_pair.n  # paper/Alon: ε⁴ n
     deviated_nodes = np.abs(s_vertices_degrees - cl_pair.bip_avg_deg) > deviation_threshold
 
     one_direction_nodes = deviated_nodes * (s_vertices_degrees - cl_pair.bip_avg_deg > deviation_threshold)
-    is_irregular = one_direction_nodes.sum() >= (1.0 / 16.0) * (self.epsilon ** 4.0) * cl_pair.n
+    is_irregular = one_direction_nodes.sum() >= (1.0 / 16.0) * (self.epsilon ** 4.0) * cl_pair.n  # (ε⁴/16) n
 
     if not is_irregular:
         one_direction_nodes = deviated_nodes * (s_vertices_degrees - cl_pair.bip_avg_deg < -deviation_threshold)
@@ -51,7 +52,7 @@ def alon2(self, cl_pair):
 
 
 def alon3(self, cl_pair, fast_convergence=True):
-    """Condition 3 (irregular): greedy certificate from neighbourhood deviation."""
+    """Alon condition 3 + §3.2 modification 2: Fiorucci degree-based greedy cert."""
     is_irregular = False
     cert_s, compl_s = [], []
     y0 = -1

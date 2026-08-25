@@ -50,8 +50,13 @@ points to gradually identify exemplars (cluster centers) and members. All points
 are initially potential exemplars; messages (responsibility and availability) are
 updated by minimizing an energy function. The number of clusters is determined
 automatically (no `k` needed). We use the standard Frey–Dueck algorithm
-(`sklearn.cluster.AffinityPropagation`), feeding the similarity matrix as the
-preference/similarity input with preferences set to the median similarity.
+(`sklearn.cluster.AffinityPropagation`). The shared preference is a percentile of
+positive off-diagonal similarities: **50 = median** (Frey–Dueck's "moderate"
+default); higher quantiles yield more exemplars, which Frey–Dueck say to use
+"if a large number of clusters is desired". Exp 2/3 search `{50, 90, 95, 99}`
+because a dense Eq. 3 reduced graph is much more uniform than `G`, and the median
+preference then under-clusters when `NC` is large (Leaves). Original APC keeps
+the median.
 
 ## 2.3 Dominant set clustering (DSet)
 
@@ -67,7 +72,11 @@ with `x_i^{(0)} = 1/n`. After convergence, points whose weight exceeds a thresho
 form a dominant set (one cluster); the cluster is removed and the process repeats on
 the remaining points. The number of clusters is determined automatically. We follow
 the replicator-dynamics implementation (Pavan & Pelillo 2007; Bulo, Pelillo & Bomze
-2011) used in the reference code, with the weight threshold
-`1/(n * 1.5)` and a stop when fewer than 5% of points remain unclustered. (The
-paper does not give the threshold value; Hou et al. PR 2023 (ref [25]) use
-`0.0001` in their own DSet-based algorithm — a documented alternative choice.)
+2011) used in the reference code. Default weight threshold `1/(n * 1.5)` and a
+stop when fewer than 5% of points remain unclustered (Fiorucci / DSLib lineage;
+the paper only says "greater than a threshold"; Vascon et al. [27] default to
+`1e-5`, Hou et al. PR 2023 [25] use `0.0001`). Exp 2/3 also search relative
+cutoffs `rel50` / `rel80` / `rel95` (keep vertices at that fraction of the current
+maximum replicator weight, extract until every vertex is assigned). On a nearly
+uniform reduced graph the absolute cutoff returns a handful of large sets;
+relative cores recover a cluster count compatible with large-`NC` datasets.

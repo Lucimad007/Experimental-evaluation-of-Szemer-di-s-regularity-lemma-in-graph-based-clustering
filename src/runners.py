@@ -12,7 +12,7 @@ import numpy as np
 from .clustering import apc, dominant_sets, forest_affinity, spc, sprg, sprg_on_graph
 
 
-def make_base_algorithm(name, X=None):
+def make_base_algorithm(name, X=None, preference_quantile=50, weight_threshold=None):
     """Return a callable ``f(sim_mat, n_clusters=None) -> labels`` for ``name``.
 
     This callable is the **base algorithm run on the reduced graph R** (a k×k
@@ -21,13 +21,21 @@ def make_base_algorithm(name, X=None):
     similarity from features; since the vertices of R have no feature vectors,
     each vertex is represented by its similarity profile (its row of R) and the
     SPRG forest is grown on those profiles — SPRG proper, not a substitute.
+
+    ``preference_quantile`` is APC-only (Frey–Dueck shared preference as a
+    percentile of positive similarities; 50 = median). ``weight_threshold`` is
+    DSet-only (``None`` → ``1/(1.5 n)``; ``"rel95"`` → 95% of max weight).
     """
     if name == "SPC":
         return lambda sim_mat, n_clusters=None: spc(sim_mat, n_clusters)
     if name == "APC":
-        return lambda sim_mat, n_clusters=None: apc(sim_mat)
+        return lambda sim_mat, n_clusters=None: apc(
+            sim_mat, preference_quantile=preference_quantile
+        )
     if name == "DSet":
-        return lambda sim_mat, n_clusters=None: dominant_sets(np.asarray(sim_mat, dtype=float))
+        return lambda sim_mat, n_clusters=None: dominant_sets(
+            np.asarray(sim_mat, dtype=float), weight_threshold=weight_threshold
+        )
     if name == "SPRG":
         def _sprg_on_reduced(sim_mat, n_clusters=None):
             if n_clusters is None:

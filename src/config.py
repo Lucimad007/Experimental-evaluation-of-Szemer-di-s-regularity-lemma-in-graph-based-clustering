@@ -16,6 +16,26 @@ B_RECOMMENDED = (2, 3, 4, 5, 6, 7, 8, 9, 10, 16)
 # Similarity σ grid (§4)
 SIGMA_GRID = (0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0)
 
+# Paper-silent reduced-graph density threshold d₀ (§3.3 / Lemma 2: edges exist
+# only when the pair is (approximately) regular *and* dw > d₀; d₀ itself is
+# unnamed). 0 keeps every Eq. 3 weight (fully weighted R). Adaptive strings
+# ("p90", "p95", "mean", "median") set d₀ from the off-diagonal densities of R.
+# Searched for APC/DSet in Exp 2/3: a dense density-matrix R makes median-
+# preference APC collapse to far too few clusters when NC is large (Leaves).
+DENSITY_THRESHOLD_GRID = (0, "p90", "p95")
+
+# APC preference as a percentile of positive off-diagonal similarities.
+# 50 = Frey–Dueck median ("moderate" number of clusters); 99 is a higher
+# shared preference, which their paper says may be varied to produce more
+# exemplars. Needed on reduced graphs whose |R| is close to the true NC.
+APC_PREFERENCE_QUANTILE_GRID = (50, 90, 95, 99)
+
+# DSet replicator support cutoff. None → 1/(1.5 n) (Fiorucci/DSLib lineage).
+# "rel80" / "rel95" keep vertices at ≥ 80% / 95% of the current maximum
+# replicator weight — a stricter reading of §2.3's unspecified threshold that
+# peels smaller dominant sets when R is a nearly-uniform density matrix.
+DSET_THRESHOLD_GRID = (None, "rel50", "rel80", "rel95")
+
 # Base algorithms
 BASE_ALGORITHMS = ("SPC", "APC", "DSet", "SPRG")
 

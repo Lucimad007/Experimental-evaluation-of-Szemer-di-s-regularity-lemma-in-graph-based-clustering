@@ -24,8 +24,12 @@ b ≤ 16) by comparing "all parameters" vs "selected parameters" results (Fig. 6
 ## Exp 2 — Comparison with original algorithms (§4.2, Figs. 7–10)
 
 For each dataset and algorithm, compare:
-- **Original**: run the base algorithm directly on the full similarity matrix `G`.
-- **Enhanced (Reg-*)**: run Algorithm 1 with the recommended parameters.
+- **Original**: run the base algorithm directly on the full similarity matrix `G`
+  (best `σ` by NMI).
+- **Enhanced (Reg-*)**: run Algorithm 1, taking the **best NMI** over the
+  recommended `(ε, ϵ, b)` grid **and** `σ` (searched independently of the original
+  algorithm). For APC/DSet the search also includes the paper-silent knobs `d₀`
+  and APC preference quantile / DSet weight threshold.
 
 Report NMI and running time; the enhanced version should be better on both on the
 majority of datasets.

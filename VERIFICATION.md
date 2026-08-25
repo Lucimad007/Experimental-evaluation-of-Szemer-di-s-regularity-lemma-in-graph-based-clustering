@@ -38,7 +38,7 @@ tables land in [`RESULTS.md`](RESULTS.md) as runs complete.
 | Algorithm 1 line 12: break when `n_ir < k(k−1)/2` (**no ε factor**) | `regularity_lemma.py::check_partition_regularity(stop_rule="algorithm1")` | condition verified character-level in the PDF; theoretical `ε·C(k,2)` rule (§3.2 Step 3) kept as option |
 | Modification 1: ≤1 irregular partner per class | `refinement_step.py` | matches Fiorucci reference exactly |
 | Modification 2: degree-based greedy certificates (Fiorucci et al. [28]) | `conditions.py::alon3` | identical to the reference code the paper adopts |
-| Modification 3 + Algorithm 1 line 3: stop when `k ≥ ϵ·|V|` | `regularity_lemma.py::run` | `max_k = int(ϵ·N)` |
+| Modification 3 + Algorithm 1 line 3: `while ϵ > k_i/n` | `regularity_lemma.py::_line3_compressible` | float test `ϵ > k/n` (not `k >= int(ϵ·N)`) |
 | Algorithm 1 lines 18–27: R ∈ R^{k×k} (Eq. 3 weights), cluster R, map labels, V0→nearest cluster | `regularity_lemma.py::generate_reduced_sim_mat`, `enhanced/algorithm1.py` | pipeline order matches the 27 pseudocode lines |
 | Parameter grids ε/ϵ/b, recommended ranges, b<\|G\| (§4.1) | `src/config.py` | all values diffed against paper |
 | Table 1 datasets (all 20, NP/ND/NC) | `src/config.py`, `src/datasets.py` | **all 20 loaders verified against Table 1 with real data** (USPS=Roweis usps_all.mat 11000×256 with NN-validated label order; Dutchnumeral=UCI mfeat, 6 views=649 dims; Leaves=zip's 64-D shape descriptors) |

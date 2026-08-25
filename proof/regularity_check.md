@@ -15,9 +15,10 @@
 ## How the code implements it
 
 `src/szemeredi/conditions.py` — three conditions tried in order by the driver
-(`regularity_lemma.py:88-97`); the pair counts as "not verified as ε-regular"
-(line 8 of Algorithm 1, counter at `regularity_lemma.py:93`) iff the deciding
-condition produced a non-empty r-side witness:
+(`regularity_lemma.py` `check_pairs_regularity`); the pair counts as "not
+verified as ε-regular" (Algorithm 1 lines 7–8) unless a condition returns a
+**positive regularity** verdict (Alon 1, or Alon 3 with an empty certificate).
+An irregularity witness **or** an undecided pair both increment `n_ir`:
 
 | Condition | Verdict logic | Witnesses produced |
 |---|---|---|
@@ -47,5 +48,5 @@ adjacency degrees are all n−1 while the average degree is weighted — nearly
 every vertex "deviates" and `alon2` certifies almost every pair irregular.
 This is exactly what the Fiorucci reference computes (verified line-by-line)
 and explains the paper's remark that its modifications yield "approximately,
-but not provably, regular partitions", with the loop typically ending at the
-ϵ·\|G\| cap (line 3) rather than the line-12 break.
+but not provably, regular partitions", with the loop typically ending when
+line 3's `ϵ > k/n` fails rather than at the line-12 break.

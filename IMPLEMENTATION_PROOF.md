@@ -340,21 +340,20 @@ pairs ε-regular) is the theoretical notion. Two stopping rules are implemented
   `ε·C(k,2)` pairs are not verified as regular.
 
 ```src/szemeredi/regularity_lemma.py
-    def check_partition_regularity(self, num_of_irregular_pairs, stop_rule="algorithm1"):
+    def check_partition_regularity(self, n_ir, stop_rule="algorithm1"):
         total_pairs = (self.k * (self.k - 1)) / 2.0
         if stop_rule == "algorithm1":
-            return num_of_irregular_pairs < total_pairs
+            return n_ir < total_pairs
         if stop_rule == "theoretical":
-            return num_of_irregular_pairs <= self.epsilon * total_pairs
+            return n_ir <= self.epsilon * total_pairs
 ```
 
 > In practice (matching the paper's "we obtain approximately, but not provably,
 > regular partitions") the Alon conditions flag almost every pair irregular on
-> small real graphs, both rules keep refining, and the loop ends at the
-> compression stop `k ≥ ϵ·|V|` — "terminating the iteration when the number of
-> classes is greater than `ϵ|G|` in most cases" (§4.1). The pair check runs at
-> the top of each pass so R is always built from pairs verified at the **final**
-> partition.
+> small real graphs, both rules keep refining, and the loop ends when line 3's
+> ``ϵ > k_i/n`` fails — "terminating the iteration when the number of classes is
+> greater than `ϵ|G|` in most cases" (§4.1). If that happens after a refine, the
+> pair check is re-run on the final partition so R is built from current classes.
 
 ### Lemma 1 (regularity lemma) — realised by the partitioning loop (§3.2 below).
 
@@ -382,63 +381,38 @@ def random(self, b=2):
     np.random.shuffle(self.classes)
 ```
 
-**Step 2 — regularity checking** (count irregular pairs, build certificates). ✅
+**Step 2 — regularity checking** (count pairs not verified as ε-regular). ✅
 
-```72:108:src/szemeredi/regularity_lemma.py
-    def check_pairs_regularity(self):
-        """Step 2: determine regular/irregular pairs and their certificates."""
-        self.condition_verified = [0] * (len(self.conditions) + 1)
-        num_of_irregular_pairs = 0
-        index = 0.0
-        for r in range(2, self.k + 1):
-            self.certs_compls_list.append([])
-            self.regularity_list.append([])
-            for s in range(1, r):
-                if self.is_weighted:
-                    cl_pair = WeightedClassesPair(self.sim_mat, self.adj_mat, self.classes, r, s, self.epsilon)
-                else:
-                    cl_pair = ClassesPair(self.adj_mat, self.classes, r, s, self.epsilon)
-                is_verified = False
+```src/szemeredi/regularity_lemma.py
+    def check_pairs_regularity(self, track_index=True):
+        """Algorithm 1 lines 4–11."""
+        n_ir = 0
+        ...
+                verified_regular = False
                 for i, cond in enumerate(self.conditions):
                     is_verified, cert_pair, compl_pair = cond(self, cl_pair)
                     if is_verified:
-                        self.certs_compls_list[r - 2].append([cert_pair, compl_pair])
-                        if cert_pair[0]:
-                            num_of_irregular_pairs += 1
-                        else:
-                            self.regularity_list[r - 2].append(s)
-                        self.condition_verified[i] += 1
+                        if not cert_pair[0]:
+                            verified_regular = True  # Alon 1 / empty Alon 3 cert
                         break
-                if not is_verified:
-                    self.certs_compls_list[r - 2].append([[[], []], [[], []]])
-                    self.condition_verified[-1] += 1
-                index += cl_pair.compute_bip_density() ** 2.0
-        index *= 1.0 / self.k ** 2.0
-        self.index_vec.append(index)
-        return num_of_irregular_pairs
+                if not verified_regular:
+                    n_ir += 1  # irregular witness or undecided
+        return n_ir
 ```
 
-**Steps 3 & 5 — stop if regular, else refine and loop.** The loop keeps the
-pair-check at the top of each pass so the reduced graph is always built from
-pairs verified at the *final* partition (Algorithm 1's `while ϵ > k_i/n` exits
-without a final check; the re-check is required to construct R). ✅
+**Steps 3 & 5 — stop if regular, else refine and loop.** Algorithm 1's outer
+guard is ``while ϵ > k_i/n``. Line 12 may Break earlier. If the guard fails after
+a refine, the pair check is re-run on the final classes (needed to build R). ✅
 
 ```src/szemeredi/regularity_lemma.py
-        while True:
-            self.certs_compls_list = []
-            self.regularity_list = []
-            self.condition_verified = [0] * len(self.conditions)
-            iteration += 1
-            num_of_irregular_pairs = self.check_pairs_regularity()
-            if self.check_partition_regularity(num_of_irregular_pairs, stop_rule=stop_rule):
-                break
-            if self.k >= max_k:
-                # Algorithm 1 line 3's while condition ϵ > k_i/n is no longer
-                # satisfied: stop iterating (modification 3).
-                break
-            self.refinement_step(self)
-        self.generate_reduced_sim_mat()
-        return self.reduced_sim_mat
+        while self._line3_compressible(compression_rate):  # line 3: ϵ > k_i/n
+            n_ir = self.check_pairs_regularity()           # lines 4–11
+            if self.check_partition_regularity(n_ir, stop_rule=stop_rule):
+                break                                      # lines 12–13
+            self.refinement_step(self)                     # line 15
+        if not pairs_match_partition:
+            self.check_pairs_regularity(track_index=False)
+        self.generate_reduced_sim_mat()                    # line 18
 ```
 
 **Step 4 — refinement** (split classes in irregular pairs; smaller set → `V0`;
@@ -512,18 +486,16 @@ def degree_based(self):
 1. **Limit irregular pairs per class to ≤ 1** — refinement picks at most one
    irregular partner `chosen` per class `s`. ✅ → `src/szemeredi/refinement_step.py:42:51`
 2. **Degree-based greedy certificates** (Fiorucci et al. 2020). ✅ → `src/szemeredi/conditions.py:54:86`
-3. **Terminate when class size small** (`k > ϵ·|V|`). ✅
+3. **Terminate when class size small** (`while ϵ > k_i/n`). ✅
 
-```131:135:src/szemeredi/regularity_lemma.py
+```src/szemeredi/regularity_lemma.py
+    def _line3_compressible(self, compression_rate):
+        """Algorithm 1 line 3: ``while ϵ > k_i / n``."""
         if 0.0 < compression_rate <= 1.0:
-            max_k = int(compression_rate * self.N)
-        elif compression_rate > 1.0:
-            max_k = int(compression_rate)
-        else:
-            raise ValueError("incorrect compression rate. Only float greater than 0.0 are accepted")
+            return compression_rate > (self.k / float(self.N))
+        if compression_rate > 1.0:
+            return self.k < int(compression_rate)
 ```
-
-with the stop test at `src/szemeredi/regularity_lemma.py:179:185` (`if self.k >= max_k: break`).
 
 > ⚠️ Randomized refinement is **not** implemented (only degree-based); see
 > `src/szemeredi/builder.py:41`. The paper uses the degree-based variant.
@@ -1037,15 +1009,19 @@ flagged ⚠️/❌ in the relevant section above.
 
 ### Paper-silent constants and how they were resolved
 
-The paper does not specify: APC preference (→ median of positive similarities,
-the sklearn default convention), DSet weight threshold (→ `1/(1.5n)` from the
-Fiorucci et al. `dense_graph_reducer` code base; Hou et al. PR 2023 use
-`0.0001` in a different algorithm), reduced-graph density threshold `d₀`
-(→ 0; irregular-edge dropping available but off by default, see §3.3),
-data preprocessing/normalization (→ none, features as distributed in the UCI
-files), SPRG `φ`/variant/bootstrap (→ 5 / `adpt` / with replacement, see §2.1),
-and the number of k-means restarts (→ `n_init=10`). Seeds are pinned to 314 for
-reproducibility; the paper reports single/averaged runs without seed details.
+The paper does not specify: APC preference (Frey–Dueck [10] allow the median
+or any shared value; original APC uses the median; Exp 2/3 search quantiles
+`{50, 90, 95, 99}` because median preference under-clusters a dense Eq. 3
+reduced graph when NC is large), DSet weight threshold (default `1/(1.5n)` from
+the Fiorucci et al. `dense_graph_reducer` lineage; Vascon et al. [27] use
+`1e-5`; Hou et al. PR 2023 [25] use `0.0001`; Exp 2/3 also search relative
+cores `rel50`/`rel80`/`rel95`), reduced-graph density threshold `d₀` (default 0
+keeps every Eq. 3 weight; Exp 2/3 search `{0, p90, p95}` for APC/DSet per
+§3.3 / Lemma 2), data preprocessing/normalization (→ none, features as
+distributed in the UCI files), SPRG `φ`/variant/bootstrap (→ 5 / `adpt` / with
+replacement, see §2.1), and the number of k-means restarts (→ `n_init=10`).
+Seeds are pinned to 314 for reproducibility; the paper reports single/averaged
+runs without seed details.
 
 ### Reference-PDF notes
 

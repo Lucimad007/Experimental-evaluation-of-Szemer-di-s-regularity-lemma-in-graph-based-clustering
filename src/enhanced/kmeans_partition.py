@@ -13,8 +13,10 @@ import time
 import numpy as np
 from sklearn.cluster import KMeans
 
+from ..szemeredi import apply_density_threshold
 
-def _reduced_matrix_from_partition(sim_mat, classes, k):
+
+def _reduced_matrix_from_partition(sim_mat, classes, k, density_threshold=0):
     """Build a k×k reduced matrix with weighted densities (Eq. 3) for a given
     partition. Mirrors ``SzemerediRegularityLemma.generate_reduced_sim_mat`` but
     uses an externally provided partition (here, from k-means)."""
@@ -31,7 +33,7 @@ def _reduced_matrix_from_partition(sim_mat, classes, k):
             density = block.sum() / (r_idx.size * s_idx.size)
             R[r, s] = density
             R[s, r] = density
-    return R
+    return apply_density_threshold(R, density_threshold)
 
 
 def kmeans_partition_clustering(
@@ -41,6 +43,7 @@ def kmeans_partition_clustering(
     n_clusters,
     k_classes,
     random_state=314,
+    density_threshold=0,
 ):
     """Algorithm 1 with k-means partitioning instead of regularity partitioning.
 
@@ -64,7 +67,9 @@ def kmeans_partition_clustering(
     t0 = time.time()
     km = KMeans(n_clusters=k_classes, random_state=random_state, n_init=10)
     classes = km.fit_predict(X)  # labels in {0..k-1}, no exceptional class
-    R = _reduced_matrix_from_partition(sim_mat, classes, k_classes)
+    R = _reduced_matrix_from_partition(
+        sim_mat, classes, k_classes, density_threshold=density_threshold
+    )
     partition_time = time.time() - t0
 
     t1 = time.time()

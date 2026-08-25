@@ -83,9 +83,11 @@ Results are written to `results/` (gitignored).
 ## What is implemented
 
 - **Regularity partitioning** (§3.2): Alon et al. algorithm with the three
-  practical modifications from the paper — limit irregular pairs per class to ≤1,
-  degree-based greedy certificates (Fiorucci et al. 2020), terminate when
-  `k > ϵ·|V|`. Both Alon (3 conditions) and Frieze–Kannan variants.
+  practical modifications from the paper — limit irregular pairs per class to ≤1
+  at refinement, degree-based greedy certificates (Fiorucci et al. 2020),
+  terminate while ``ϵ > k_i/n`` (minimum class size ``⌊1/ϵ⌋``). Default is Alon
+  (3 conditions); Frieze–Kannan is an optional variant the paper says performs
+  similarly.
 - **Reduced graph** (§3.3): weighted edge density via Eq. (3).
 - **Algorithm 1** (§3.4): partition → reduced graph → cluster on reduced graph →
   map labels back, with exceptional class `V0` assigned to the nearest cluster.
