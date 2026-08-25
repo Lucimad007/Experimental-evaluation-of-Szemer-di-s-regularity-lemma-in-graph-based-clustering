@@ -1,14 +1,14 @@
-"""Command-line entry point for the experiments.
+"""command-line entry point for the experiments.
 
-Usage:
-    python -m src.main exp1            # parameter influence (§4.1, Figs. 2-5)
-    python -m src.main exp2            # enhanced vs original (§4.2, Figs. 7-10)
-    python -m src.main exp2b           # regularity vs kmeans partitioning (Fig. 11)
-    python -m src.main exp3            # vs recent algorithms (§4.3, Tables 2-5)
+usage:
+    python -m src.main exp1            # parameter influence (§4.1, figs. 2-5)
+    python -m src.main exp2            # enhanced vs original (§4.2, figs. 7-10)
+    python -m src.main exp2b           # regularity vs kmeans partitioning (fig. 11)
+    python -m src.main exp3            # vs recent algorithms (§4.3, tables 2-5)
     python -m src.main smoke           # quick smoke test on one small dataset
     python -m src.main all            # run exp1, exp2, exp2b, exp3 in sequence
 
-Options:
+options:
     --datasets Thyroid,Wine           # restrict to a subset of datasets
     --algorithms SPC,APC              # restrict to a subset of base algorithms
     --out results                     # output directory (default: results/)
@@ -34,15 +34,18 @@ from . import plotting
 
 
 def _split(arg):
+    # comma-separated cli lists
     return [s.strip() for s in arg.split(",") if s.strip()]
 
 
 def run_smoke(args):
+    # no network, synthetic blobs
     from .smoke_test import main as _smoke_main
     _smoke_main()
 
 
 def run_exp1(args):
+    # paper §4.1 figs. 2–6
     df = experiment1_parameter_influence(
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
@@ -56,6 +59,7 @@ def run_exp1(args):
 
 
 def run_exp2(args):
+    # paper §4.2 figs. 7–10
     df = experiment2_enhanced_vs_original(
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
@@ -67,6 +71,7 @@ def run_exp2(args):
 
 
 def run_exp2b(args):
+    # paper §4.2 fig. 11
     df = experiment2b_regularity_vs_kmeans(
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
@@ -78,6 +83,7 @@ def run_exp2b(args):
 
 
 def run_exp3(args):
+    # paper §4.3 tables 2–5
     tables = experiment3_vs_recent(
         dataset_names=_split(args.datasets) if args.datasets else None,
         out_dir=args.out,

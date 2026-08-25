@@ -49,10 +49,14 @@ and a fixed seed (the paper averages over 5 trials; we fix one for
 reproducibility).
 """
 
+# arrays
 import numpy as np
+# sparse path matrix p for eq. 7 numerator
 import scipy.sparse
 
+# tclust / φ / adpt defaults
 from .. import config
+# paper §2.1 spc on the learned affinity
 from .spectral import spc
 
 
@@ -66,31 +70,38 @@ def _best_split(values, labels):
     class labels (0 = real, 1 = synthetic). Returns ``(threshold, gain)`` with
     ``threshold = None`` if no valid split exists.
     """
+    # sort arriving samples by this feature
     order = np.argsort(values, kind="stable")
     v = values[order]
     y = labels[order]
     m = v.size
+    # no split if constant or singleton
     if m < 2 or v[0] == v[-1]:
         return None, -np.inf
 
+    # class-1 count (synthetic)
     n1 = y.sum()
     p1 = n1 / m
+    # parent gini (eq. 3 of zhu–loy–gong)
     gini_s = 2.0 * p1 * (1.0 - p1)
 
     cs1 = np.cumsum(y)
-    k = np.arange(1, m)                       # split after position k-1: |L| = k
-    # valid only where consecutive values differ (mid-points, |S|-1 candidates)
+    # split after position k-1: |l| = k
+    k = np.arange(1, m)
+    # valid only where consecutive values differ (mid-points, |s|-1 candidates)
     valid = v[:-1] < v[1:]
 
     p1_l = cs1[:-1] / k
     p1_r = (n1 - cs1[:-1]) / (m - k)
     gini_l = 2.0 * p1_l * (1.0 - p1_l)
     gini_r = 2.0 * p1_r * (1.0 - p1_r)
+    # information gain
     gain = np.where(valid, gini_s - (k / m) * gini_l - ((m - k) / m) * gini_r, -np.inf)
 
     best = np.argmax(gain)
     if not np.isfinite(gain[best]):
         return None, -np.inf
+    # mid-point threshold
     threshold = (v[best] + v[best + 1]) / 2.0
     return threshold, gain[best]
 
@@ -104,13 +115,21 @@ class _Tree:
     """
 
     def __init__(self, feature, threshold, left, right, n_real, paths, leaf_ids, leaf_sizes):
+        # split feature per node
         self.feature = feature
+        # split threshold per node
         self.threshold = threshold
+        # left child index (−1 = leaf)
         self.left = left
+        # right child index
         self.right = right
+        # |s_κ| real training samples at each node (eq. 12)
         self.n_real = n_real
+        # internal-node path of every sample (root excluded)
         self.paths = paths
+        # leaf id of every sample
         self.leaf_ids = leaf_ids
+        # |λ| real samples in that leaf
         self.leaf_sizes = leaf_sizes
 
 
@@ -125,28 +144,38 @@ def _train_tree(X, rng, mtry, min_samples_leaf):
     explicit stack so deep trees cannot hit Python's recursion limit.
     """
     n, d = X.shape
+    # bootstrap sample of real points
     boot = rng.integers(0, n, size=n)
     Xb = X[boot]
+    # feature bounding box of the bootstrap
     lo, hi = Xb.min(0), Xb.max(0)
+    # liu–xia–yu synthetic class 1
     Xsyn = rng.uniform(lo, hi, size=(n, d))
-    feats = np.vstack([Xb, Xsyn])             # real first, synthetic last
+    # real first, synthetic last
+    feats = np.vstack([Xb, Xsyn])
     labels = np.concatenate([np.zeros(n, dtype=int), np.ones(n, dtype=int)])
 
+    # parallel node arrays
     feature, threshold, left, right, n_real = [], [], [], [], []
 
     def new_node(arriving):
+        # next node id
         node = len(feature)
         feature.append(0), threshold.append(0.0), left.append(-1), right.append(-1)
+        # |s_κ|: real (not synthetic) samples arriving here
         n_real.append(int((arriving < n).sum()))
         return node
 
     def try_split(node, idx):
         """Find the Gini-best split for node ``node``; wire children if found."""
+        # paper: stop when ≤ φ real samples arrive
         if n_real[node] <= min_samples_leaf:
             return
+        # mtry = √d candidate features
         feats_idx = rng.choice(d, size=min(mtry, d), replace=False)
         sub = feats[idx]
         best_gain, best_f, best_t = -np.inf, None, None
+        # greedy ϑ* (eq. 2)
         for f in feats_idx:
             t, g = _best_split(sub[:, f], labels[idx])
             if t is not None and g > best_gain:
@@ -154,9 +183,11 @@ def _train_tree(X, rng, mtry, min_samples_leaf):
         if best_f is None:
             return
         mask = sub[:, best_f] < best_t
+        # degenerate split
         if mask.all() or not mask.any():
             return
         feature[node], threshold[node] = best_f, best_t
+        # wire children and continue growing
         for is_left, m_ in ((True, mask), (False, ~mask)):
             child = new_node(idx[m_])
             if is_left:
@@ -165,6 +196,7 @@ def _train_tree(X, rng, mtry, min_samples_leaf):
                 right[node] = child
             stack.append((child, idx[m_]))
 
+    # grow from the mixture of 2n samples
     root = new_node(np.arange(2 * n))
     stack = [(root, np.arange(2 * n))]
     while stack:
@@ -175,15 +207,18 @@ def _train_tree(X, rng, mtry, min_samples_leaf):
     # recorded — "the root node γ is not considered in computing the
     # similarity since all samples share the same root node" (20.pdf, Eq. 7)
     paths, leaf_ids, leaf_sizes = [], [], []
+    # route every original sample (not the synthetic ones)
     for i in range(n):
         node, path = 0, []
         while left[node] != -1 or right[node] != -1:
+            # root is not counted in eq. 7
             if node != 0:
                 path.append(node)
             node = left[node] if X[i, feature[node]] < threshold[node] else right[node]
         paths.append(path)
         leaf_ids.append(node)
-        leaf_sizes.append(n_real[node])       # |Λ|: real training samples in the leaf
+        # |λ|: real training samples in the leaf
+        leaf_sizes.append(n_real[node])
 
     return _Tree(feature, threshold, left, right, n_real, paths, leaf_ids, leaf_sizes)
 
@@ -198,13 +233,16 @@ def _accumulate_tree_affinity(A, tree, n, variant, block=1024):
     n×n temporary is materialised (USPS has n = 11000; a dense temporary would
     be ~1 GB per tree).
     """
+    # clustrf-bi (eq. 9–10): 1 iff same leaf
     if variant == "bi":
         leaf = np.asarray(tree.leaf_ids)
         A += leaf[:, None] == leaf[None, :]
         return
 
+    # number of internal nodes on each path
     depth = np.array([len(p) for p in tree.paths], dtype=float)
     n_nodes = len(tree.feature)
+    # unfm: w=1; adpt: w_κ = 1/|s_κ| (eq. 12)
     w = np.ones(n_nodes) if variant == "unfm" else np.array(
         [1.0 / nr if nr > 0 else 0.0 for nr in tree.n_real]
     )
@@ -215,25 +253,30 @@ def _accumulate_tree_affinity(A, tree, n, variant, block=1024):
     # denominator needs Σ w_u over i's own path, i.e. the row sum of P².
     rows = np.concatenate([np.full(len(p), i, dtype=int) for i, p in enumerate(tree.paths)])
     cols = np.concatenate([np.asarray(p, dtype=int) for p in tree.paths])
-    if cols.size == 0:                         # single-leaf tree: zero numerator
+    # single-leaf tree: zero numerator
+    if cols.size == 0:
         return
     P = scipy.sparse.csr_matrix((np.sqrt(w[cols]), (rows, cols)), shape=(n, n_nodes))
-    path_weight = np.asarray(P.multiply(P).sum(axis=1)).ravel()   # Σ w_u per path
+    # Σ w_u per path
+    path_weight = np.asarray(P.multiply(P).sum(axis=1)).ravel()
 
     if variant == "unfm":
-        denom = depth + 1.0                    # internal nodes + leaf (weight 1)
-    else:  # adpt: Σ 1/|S_κ| over i's internal nodes + 1/|Λ(i)|
+        # internal nodes + leaf (weight 1), eq. 11
+        denom = depth + 1.0
+    else:
+        # adpt: Σ 1/|s_κ| over i's internal nodes + 1/|λ(i)|
         # a split can route all real samples to one child, leaving a leaf with
-        # |Λ| = 0 real training samples; the paper does not cover this case —
+        # |λ| = 0 real training samples; the paper does not cover this case —
         # we treat the empty leaf as a singleton neighbourhood (term 1/1)
         denom = path_weight + np.array(
             [1.0 / max(ls, 1) for ls in tree.leaf_sizes]
         )
     denom = np.where(denom > 0, denom, 1e-12)
 
-    # b̂ = argmax_{b∈{i,j}} |P_b| (Eq. 14): the longer path; ties -> i
+    # b̂ = argmax_{b∈{i,j}} |p_b| (eq. 14): the longer path; ties -> i
     for i0 in range(0, n, block):
         i1 = min(i0 + block, n)
+        # shared-node weight sum (eq. 7 numerator)
         numerator = np.asarray((P[i0:i1] @ P.T).todense())
         denom_mat = np.where(
             depth[i0:i1, None] >= depth[None, :], denom[i0:i1, None], denom[None, :]
@@ -264,23 +307,29 @@ def forest_affinity(X, n_trees=None, variant=None, mtry=None,
     """
     X = np.asarray(X, dtype=float)
     n, d = X.shape
+    # paper sec. 4: tclust = 1000
     if n_trees is None:
         n_trees = config.SPRG_TREES
+    # paper's best: clustrf-strct-adpt
     if variant is None:
         variant = config.SPRG_VARIANT
+    # paper-silent φ = 5
     if min_samples_leaf is None:
         min_samples_leaf = config.SPRG_MIN_LEAF
+    # paper: mtry = √d
     if mtry is None:
         mtry = max(1, int(round(np.sqrt(d))))
     rng = np.random.default_rng(random_state)
 
     A = np.zeros((n, n))
+    # eq. 8: average tree affinities
     for t in range(n_trees):
         tree = _train_tree(X, rng, mtry, min_samples_leaf)
         _accumulate_tree_affinity(A, tree, n, variant)
         if verbose and (t + 1) % max(1, n_trees // 10) == 0:
             print(f"  [forest] tree {t + 1}/{n_trees}")
     A /= n_trees
+    # undirected
     return (A + A.T) / 2.0
 
 
@@ -293,12 +342,15 @@ def sprg_similarity(X, n_clusters=None, **kwargs):
     The forest does not depend on the number of clusters; ``n_clusters`` is
     accepted for signature compatibility and ignored.
     """
+    # forest does not depend on k
     return forest_affinity(X, **kwargs)
 
 
 def sprg(X, n_clusters, **kwargs):
-    """SPRG: forest affinity + spectral clustering with ``n_clusters`` clusters."""
+    """sprg: forest affinity + spectral clustering with ``n_clusters`` clusters."""
+    # learned graph g
     A = forest_affinity(X, **kwargs)
+    # paper §2.1 spc
     return spc(A, n_clusters)
 
 
@@ -313,7 +365,9 @@ def sprg_on_graph(sim_mat, n_clusters, min_samples_leaf=None, **kwargs):
     dataset has points (with the dataset-level φ = 5 a small R would yield a
     single-leaf forest and a zero affinity).
     """
+    # treat each row of r as a feature vector
     R = np.asarray(sim_mat, dtype=float)
+    # small r would be a single leaf if φ=5
     if min_samples_leaf is None:
         min_samples_leaf = 1
     return sprg(R, n_clusters, min_samples_leaf=min_samples_leaf, **kwargs)

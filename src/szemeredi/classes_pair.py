@@ -1,124 +1,157 @@
-"""Bipartite class-pair data structures used by the regularity check.
+"""bipartite class-pair used by the regularity check.
 
-Each pair of classes ``(r, s)`` from the current partition is treated as a
-bipartite graph. ``ClassesPair`` works on a 0/1 adjacency matrix (unweighted);
-``WeightedClassesPair`` additionally carries the weighted similarity matrix and is
-used when the input graph is edge-weighted (graph-based clustering case).
-
-This follows Fiorucci et al.'s ``dense_graph_reducer`` implementation of the
-Alon et al. regularity-partitioning conditions; see
-``spec/regularity_partitioning.md``.
+paper §3.2: each (vr, vs) is a bipartite graph. eq. 2 = unweighted density;
+eq. 3 = weighted (hou et al. pr 2026). certificates follow fiorucci et al. [28]
+(dense_graph_reducer) of alon et al. [30].
 """
 
 import numpy as np
 
 
 class ClassesPair:
-    """A bipartite graph between two equally-sized classes ``r`` and ``s``."""
+    """bipartite graph between two equitable classes r and s."""
 
     def __init__(self, adj_mat, classes, r, s, epsilon):
+        # paper: class indices vr, vs
         self.r = r
         self.s = s
+        # paper ε (def. 1 / alon thresholds)
         self.epsilon = epsilon
-        # indices of nodes in class r (row 0) and class s (row 1)
+        # vertices currently labelled r
         self.index_map = np.where(classes == r)[0]
+        # stack s under r → 2 × n index map
         self.index_map = np.vstack((self.index_map, np.where(classes == s)[0]))
+        # |vr|×|vs| adjacency block
         self.bip_adj_mat = adj_mat[np.ix_(self.index_map[0], self.index_map[1])]
+        # equitable ⇒ |vr| = |vs| = n
         self.n = self.bip_adj_mat.shape[0]
+        # mean degree on this bipartite graph
         self.bip_avg_deg = self._bip_avg_degree()
+        # paper eq. 2: d(a,b) = e(a,b) / (|a||b|)
         self.bip_density = self.compute_bip_density()
 
     def _bip_avg_degree(self):
+        # mean of row-sums and column-sums
         return (self.bip_adj_mat.sum(0) + self.bip_adj_mat.sum(1)).sum() / (2.0 * self.n)
 
     def compute_bip_density(self):
-        # paper Eq. (2): d(A,B) = e(A,B) / (|A||B|)  — unweighted reduced-graph weight
+        # paper eq. 2: unweighted edge density of the pair
         return float(self.bip_adj_mat.sum()) / (self.n ** 2.0)
 
     def classes_vertices_degrees(self):
+        # degrees of vs vertices into vr
         c_v_degs = np.sum(self.bip_adj_mat, 0)
+        # stack vr degrees under vs degrees
         c_v_degs = np.vstack((c_v_degs, np.sum(self.bip_adj_mat, 1)))
         return c_v_degs
 
     def neighbourhood_deviation_matrix(self, transpose_first=True):
-        """Neighbourhood deviation matrix used by Alon condition 3.
-
-        ``M = B^T B`` (or ``B B^T``) with the average-degree term subtracted; also
-        returns the diagonal (per-vertex neighbourhood degrees).
-        """
+        """alon condition 3 neighbourhood-deviation matrix m."""
         if transpose_first:
+            # m = bᵀb (common-neighbour counts on vs)
             mat = self.bip_adj_mat.T @ self.bip_adj_mat
         else:
+            # m = bbᵀ (common-neighbour counts on vr)
             mat = self.bip_adj_mat @ self.bip_adj_mat.T
+        # diagonal = per-vertex neighbourhood sizes
         rs_degrees = np.diag(mat).copy()
+        # subtract expected common-neighbour term (avg deg)² / n
         mat = mat - (self.bip_avg_deg ** 2.0) / self.n
         return mat, rs_degrees
 
     def find_Y(self, nh_dev_mat):
-        """Greedy certificate Y: pick nodes with the highest inner-sum deviation."""
+        """fiorucci [28] greedy y: nodes with largest inner-sum deviation."""
+        # row sums of m minus the diagonal
         inner_sums = nh_dev_mat.sum(1) - np.diag(nh_dev_mat)
+        # sort vertices by that score, descending
         inner_sums_indices = np.argsort(inner_sums)[::-1]
+        # paper/alon: |y| must exceed εn
         y_card_thresh = int((self.epsilon * self.n) + 1)
+        # seed the outer sum with the first |y|-1 vertices
         outer_sum = inner_sums[inner_sums_indices[0:(y_card_thresh - 1)]].sum()
         for i in range(y_card_thresh, self.n):
+            # grow y by the next-highest vertex
             outer_sum += inner_sums[inner_sums_indices[i]]
+            # σ(y) = mean entry of the y-block of m
             sigma_y = outer_sum / (i ** 2.0)
-            if sigma_y >= ((self.epsilon ** 3.0) / 2.0) * self.n:  # Fiorucci/Alon: σ(Y) ≥ (ε³/2) n
+            # fiorucci/alon: σ(y) ≥ (ε³/2)·n
+            if sigma_y >= ((self.epsilon ** 3.0) / 2.0) * self.n:
                 return inner_sums_indices[0:i]
+        # no y met the threshold → empty certificate
         return np.array([])
 
     def find_Yp(self, degrees, Y_indices):
+        # y' ⊂ y: vertices whose degree is within ε⁴n of the bipartite average
         return Y_indices[np.abs(degrees - self.bip_avg_deg) < ((self.epsilon ** 4.0) * self.n)]
 
     def compute_y0(self, nh_dev_mat, Y_indices, Yp_indices):
+        # score each y' vertex by its deviation mass into y \ y'
         sums = np.full((self.n,), -np.inf)
         rest = set(Y_indices) - set(Yp_indices)
         for i in Yp_indices:
             sums[i] = 0.0
             for j in rest:
                 sums[i] += nh_dev_mat[i, j]
+        # y0 = argmax of that score
         return int(np.argmax(sums))
 
     def find_s_cert_and_compl(self, nh_dev_mat, y0, Yp_indices):
-        outliers_in_s = set(np.where(nh_dev_mat[y0, :] > 2.0 * (self.epsilon ** 4.0) * self.n)[0])  # 2ε⁴ n
+        # alon: outliers in vs whose deviation from y0 exceeds 2ε⁴n
+        outliers_in_s = set(np.where(nh_dev_mat[y0, :] > 2.0 * (self.epsilon ** 4.0) * self.n)[0])
+        # keep those that also sit in y'
         outliers_in_Yp = list(set(Yp_indices) & outliers_in_s)
+        # map back to original vertex ids (class s)
         cert = list(self.index_map[1][outliers_in_Yp])
+        # complement in vs
         compl = [self.index_map[1][i] for i in range(self.n) if i not in outliers_in_Yp]
         return cert, compl
 
     def find_r_cert_and_compl(self, y0):
+        # neighbours of y0 inside vr
         indices = np.where(self.bip_adj_mat[:, y0] > 0)[0]
         cert = list(self.index_map[0][indices])
+        # rest of vr
         compl = [self.index_map[0][i] for i in range(self.n) if i not in indices]
         return cert, compl
 
 
 class WeightedClassesPair(ClassesPair):
-    """Paper Eq. (3): reduced-graph edge weight = mean original similarity between two classes."""
+    """paper eq. 3: reduced-graph weight = mean original similarity of the pair."""
 
     def __init__(self, sim_mat, adj_mat, classes, r, s, epsilon):
+        # paper: class indices vr, vs
         self.r = r
         self.s = s
+        # paper ε
         self.epsilon = epsilon
+        # vertices currently labelled r
         self.index_map = np.where(classes == r)[0]
+        # stack s under r
         self.index_map = np.vstack((self.index_map, np.where(classes == s)[0]))
-        # |X|×|Y| block of original similarities = all w(x_i, y_j) in paper Eq. (3)
+        # |x|×|y| block of w(xi, yj) — the two sums in eq. 3
         self.bip_sim_mat = sim_mat[np.ix_(self.index_map[0], self.index_map[1])]
+        # 0/1 support of that block (used by alon certificates)
         self.bip_adj_mat = adj_mat[np.ix_(self.index_map[0], self.index_map[1])]
+        # equitable ⇒ |vr| = |vs| = n
         self.n = self.bip_sim_mat.shape[0]
+        # weighted analogue of mean bipartite degree
         self.bip_avg_deg = self._bip_avg_degree()
+        # paper eq. 3
         self.bip_density = self.compute_bip_density()
 
     def _bip_avg_degree(self):
+        # weighted analogue of mean bipartite degree
         return (self.bip_sim_mat.sum(0) + self.bip_sim_mat.sum(1)).sum() / (2.0 * self.n)
 
     def compute_bip_density(self):
-        # paper Eq. (3): dw(X,Y) = Σ_i Σ_j w(x_i,y_j) / (|X||Y|)
-        # equitable partition ⇒ |X|=|Y|=n, so this is sum(w) / n²
+        # paper eq. 3: dw(x,y) = Σi Σj w(xi,yj) / (|x||y|)
+        # equitable ⇒ |x|=|y|=n, so this is sum(w) / n²
         return self.bip_sim_mat.sum() / (self.n ** 2.0)
 
     def find_r_cert_and_compl(self, y0):
+        # neighbours of y0 on the 0/1 support
         indices = np.where(self.bip_adj_mat[:, y0] > 0.0)[0]
         cert = list(self.index_map[0][indices])
+        # rest of vr
         compl = [self.index_map[0][i] for i in range(self.n) if i not in indices]
         return cert, compl

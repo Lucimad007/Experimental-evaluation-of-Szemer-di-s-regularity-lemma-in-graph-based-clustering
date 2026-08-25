@@ -25,6 +25,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+# local zip archives (table 1 datasets)
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -33,10 +34,12 @@ DATA_DIR.mkdir(exist_ok=True)
 # low-level helpers
 # ---------------------------------------------------------------------------
 def _zip(name):
+    # open a dataset zip under data/
     return zipfile.ZipFile(DATA_DIR / name)
 
 
 def _text(zf, inner):
+    # decode one member of a zip
     return zf.read(inner).decode("utf-8", "replace")
 
 
@@ -57,11 +60,12 @@ def _load_cache(name):
 
 
 def _labels_to_int(y):
+    # map string / 1-based labels to {0, …, nc−1}
     return pd.factorize(np.asarray(y))[0]
 
 
 def _arff_data_rows(text):
-    """Return the rows after the @data line of an ARFF file as a list of strings."""
+    """return the rows after the @data line of an arff file as a list of strings."""
     lines = text.splitlines()
     for i, l in enumerate(lines):
         if l.strip().lower().startswith("@data"):
@@ -73,29 +77,34 @@ def _arff_data_rows(text):
 # per-dataset parsers (read from local zips)
 # ---------------------------------------------------------------------------
 def _load_wine():
+    # table 1: wine (178, 13, 3); class is column 0
     df = pd.read_csv(io.StringIO(_text(_zip("wine.zip"), "wine.data")), header=None)
     return df.iloc[:, 1:].to_numpy(dtype=float), df.iloc[:, 0].to_numpy()
 
 
 def _load_seeds():
+    # table 1: seeds (210, 7, 3)
     df = pd.read_csv(io.StringIO(_text(_zip("seeds.zip"), "seeds_dataset.txt")),
                       sep=r"\s+", header=None)
     return df.iloc[:, :7].to_numpy(dtype=float), df.iloc[:, 7].to_numpy()
 
 
 def _load_ecoli():
+    # table 1: ecoli (336, 7, 8); skip the sequence-name column
     df = pd.read_csv(io.StringIO(_text(_zip("ecoli.zip"), "ecoli.data")),
                       sep=r"\s+", header=None)
     return df.iloc[:, 1:8].to_numpy(dtype=float), df.iloc[:, 8].to_numpy()
 
 
 def _load_glass():
+    # table 1: glass (214, 9, 6)
     df = pd.read_csv(io.StringIO(_text(_zip("glass+identification.zip"), "glass.data")),
                       header=None)
     return df.iloc[:, 1:10].to_numpy(dtype=float), df.iloc[:, 10].to_numpy()
 
 
 def _load_sonar():
+    # table 1: sonar (208, 60, 2)
     text = _text(_zip("connectionist+bench+sonar+mines+vs+rocks.zip"), "sonar.all-data")
     rows = [l for l in text.splitlines() if l and not l.startswith(";;;")]
     df = pd.read_csv(io.StringIO("\n".join(rows)), header=None)
@@ -103,24 +112,28 @@ def _load_sonar():
 
 
 def _load_banknote():
+    # table 1: banknote (1372, 4, 2)
     df = pd.read_csv(io.StringIO(_text(_zip("banknote+authentication.zip"),
                                    "data_banknote_authentication.txt")), header=None)
     return df.iloc[:, :4].to_numpy(dtype=float), df.iloc[:, 4].to_numpy()
 
 
 def _load_spambase():
+    # table 1: spambase (4601, 57, 2)
     df = pd.read_csv(io.StringIO(_text(_zip("spambase.zip"), "spambase.data")), header=None)
     return df.iloc[:, :57].to_numpy(dtype=float), df.iloc[:, 57].to_numpy()
 
 
 def _load_libras():
+    # table 1: libras (360, 90, 15)
     df = pd.read_csv(io.StringIO(_text(_zip("libras+movement.zip"), "movement_libras.data")),
                       header=None)
-    # class is the LAST column (numeric 1..15); 90 features
+    # class is the last column (numeric 1..15); 90 features
     return df.iloc[:, :90].to_numpy(dtype=float), df.iloc[:, 90].to_numpy()
 
 
 def _load_segment():
+    # table 1: segment (2310, 19, 7); train+test concatenated, class first
     zf = _zip("image+segmentation.zip")
     txt_tr = _text(zf, "segmentation.data")
     txt_te = _text(zf, "segmentation.test")
@@ -132,6 +145,7 @@ def _load_segment():
     return df.iloc[:, 1:].to_numpy(dtype=float), df.iloc[:, 0].to_numpy()  # class first
 
 
+# remaining table 1 loaders (class-first / class-last csv, arff, rar, images)
 def _load_spectf():
     zf = _zip("spectf+heart.zip")
     tr = _text(zf, "SPECTF.train")
@@ -141,6 +155,7 @@ def _load_spectf():
 
 
 def _load_landsat():
+    # table 1: landsat (6435, 36, 6); train+test, class last
     zf = _zip("statlog+landsat+satellite.zip")
     tr = _text(zf, "sat.trn")
     te = _text(zf, "sat.tst")
@@ -149,12 +164,14 @@ def _load_landsat():
 
 
 def _load_thyroid():
+    # table 1: thyroid (215, 5, 3); class first
     df = pd.read_csv(io.StringIO(_text(_zip("thyroid+disease.zip"), "new-thyroid.data")),
                       header=None)
     return df.iloc[:, 1:].to_numpy(dtype=float), df.iloc[:, 0].to_numpy()  # class first
 
 
 def _load_rice():
+    # table 1: rice (3810, 7, 2); arff, class last
     text = _text(_zip("rice+cammeo+and+osmancik.zip"), "Rice_Cammeo_Osmancik.arff")
     rows = [l for l in _arff_data_rows(text) if l.strip()]
     df = pd.read_csv(io.StringIO("\n".join(rows)), header=None)
@@ -162,6 +179,7 @@ def _load_rice():
 
 
 def _load_raisin():
+    # table 1: raisin (900, 7, 2); nested zip + arff
     outer = _zip("raisin.zip")
     inner = outer.read("Raisin_Dataset.zip")
     zf2 = zipfile.ZipFile(io.BytesIO(inner))
@@ -271,6 +289,7 @@ def _load_via_ucimlrepo(uciid, target_col):
 
 
 def _synthetic(n, d, nc, seed=314):
+    # last-resort stand-in when a table 1 dataset is not on disk
     rng = np.random.default_rng(seed)
     centers = rng.normal(0, 6, size=(nc, d))
     X = np.vstack([rng.normal(c, 1.0, size=(n // nc, d)) for c in centers])
@@ -299,10 +318,10 @@ _LOCAL_LOADERS = {
 
 
 def load_dataset(name):
-    """Load a dataset by name; returns ``(X, y)`` with integer labels.
+    """load a dataset by name; returns ``(x, y)`` with integer labels.
 
-    Uses the local zip in ``data/`` when available; otherwise falls back to
-    ``ucimlrepo`` (if installed) or a synthetic stand-in. Results are cached.
+    uses the local zip in ``data/`` when available; otherwise falls back to
+    ``ucimlrepo`` (if installed) or a synthetic stand-in. results are cached.
     """
     cached = _load_cache(name)
     if cached is not None:
@@ -324,6 +343,7 @@ def load_dataset(name):
     else:
         raise ValueError(f"unknown dataset: {name}")
 
+    # paper labels are treated as {0, …, nc−1}
     y = _labels_to_int(y)
     X = np.asarray(X, dtype=float)
     _save_cache(name, X, y)
@@ -331,5 +351,5 @@ def load_dataset(name):
 
 
 def list_datasets():
-    """Return the list of all 20 dataset names (Table 1)."""
+    """return the list of all 20 dataset names (table 1)."""
     return list(_LOCAL_LOADERS.keys()) + list(_FALLBACK.keys())

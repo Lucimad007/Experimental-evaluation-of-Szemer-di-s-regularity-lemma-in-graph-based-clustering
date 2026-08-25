@@ -1,41 +1,47 @@
-"""Dispatch helpers: map a base-algorithm name to a callable.
+"""dispatch helpers: map a base-algorithm name to a callable.
 
-Each callable has signature ``f(sim_mat, n_clusters=None) -> labels``. Algorithms
-that determine the cluster count automatically (APC, DSet) ignore ``n_clusters``;
-SPC and SPRG require it.
+each callable has signature ``f(sim_mat, n_clusters=none) -> labels``. algorithms
+that determine the cluster count automatically (apc, dset) ignore ``n_clusters``;
+spc and sprg require it.
 
-See ``spec/base_algorithms.md``.
+see ``spec/base_algorithms.md``. hou et al., pr 171 (2026) §2 and alg 1 line 19.
 """
 
+# arrays (dset wants a dense float graph)
 import numpy as np
 
+# the four paper algorithms
 from .clustering import apc, dominant_sets, forest_affinity, spc, sprg, sprg_on_graph
 
 
 def make_base_algorithm(name, X=None, preference_quantile=50, weight_threshold=None):
-    """Return a callable ``f(sim_mat, n_clusters=None) -> labels`` for ``name``.
+    """return a callable ``f(sim_mat, n_clusters=none) -> labels`` for ``name``.
 
-    This callable is the **base algorithm run on the reduced graph R** (a k×k
-    similarity matrix) inside Algorithm 1 (line 19: "perform graph-based
-    clustering on R"). SPC, APC and DSet consume R directly. SPRG learns its
-    similarity from features; since the vertices of R have no feature vectors,
-    each vertex is represented by its similarity profile (its row of R) and the
-    SPRG forest is grown on those profiles — SPRG proper, not a substitute.
+    this callable is the **base algorithm run on the reduced graph r** (a k×k
+    similarity matrix) inside algorithm 1 (line 19: "perform graph-based
+    clustering on r"). spc, apc and dset consume r directly. sprg learns its
+    similarity from features; since the vertices of r have no feature vectors,
+    each vertex is represented by its similarity profile (its row of r) and the
+    sprg forest is grown on those profiles — sprg proper, not a substitute.
 
-    ``preference_quantile`` is APC-only (Frey–Dueck shared preference as a
+    ``preference_quantile`` is apc-only (frey–dueck shared preference as a
     percentile of positive similarities; 50 = median). ``weight_threshold`` is
-    DSet-only (``None`` → ``1/(1.5 n)``; ``"rel95"`` → 95% of max weight).
+    dset-only (``none`` → ``1/(1.5 n)``; ``"rel95"`` → 95% of max weight).
     """
+    # paper §2.1
     if name == "SPC":
         return lambda sim_mat, n_clusters=None: spc(sim_mat, n_clusters)
+    # paper §2.2
     if name == "APC":
         return lambda sim_mat, n_clusters=None: apc(
             sim_mat, preference_quantile=preference_quantile
         )
+    # paper §2.3
     if name == "DSet":
         return lambda sim_mat, n_clusters=None: dominant_sets(
             np.asarray(sim_mat, dtype=float), weight_threshold=weight_threshold
         )
+    # paper sprg / ref [20], run on r's rows (alg 1 line 19)
     if name == "SPRG":
         def _sprg_on_reduced(sim_mat, n_clusters=None):
             if n_clusters is None:
@@ -46,30 +52,34 @@ def make_base_algorithm(name, X=None, preference_quantile=50, weight_threshold=N
 
 
 def original_graph(name, X, sigma=None, n_clusters=None, **kwargs):
-    """Return the original graph ``G`` (similarity matrix) for ``name``.
+    """return the original graph ``g`` (similarity matrix) for ``name``.
 
-    For SPC/APC/DSet this is the Gaussian similarity with parameter ``sigma``.
-    For SPRG this is the clustering-forest affinity (Zhu–Loy–Gong); it is
-    learned from ``X`` alone — ``sigma`` and ``n_clusters`` are not used.
+    for spc/apc/dset this is the gaussian similarity with parameter ``sigma``.
+    for sprg this is the clustering-forest affinity (zhu–loy–gong); it is
+    learned from ``x`` alone — ``sigma`` and ``n_clusters`` are not used.
     """
     from .enhanced.similarity import gaussian_similarity
 
+    # paper: sprg does not involve σ
     if name == "SPRG":
         return forest_affinity(X, **kwargs)
+    # paper §4: s = exp(−d/(d̄·σ))
     return gaussian_similarity(X, sigma)
 
 
 def run_original(name, sim_mat, n_clusters, X=None, **kwargs):
-    """Run an original (non-enhanced) base algorithm on the full similarity matrix.
+    """run an original (non-enhanced) base algorithm on the full similarity matrix.
 
-    For SPRG the original algorithm learns its own similarity from ``X`` and
-    does NOT use the supplied ``sim_mat``; ``X`` must therefore be provided.
+    for sprg the original algorithm learns its own similarity from ``x`` and
+    does not use the supplied ``sim_mat``; ``x`` must therefore be provided.
     """
     if name == "SPRG":
         if X is None:
             raise ValueError("SPRG requires the feature matrix X")
         return sprg(X, n_clusters, **kwargs)
     fn = make_base_algorithm(name, X=X)
+    # spc needs the ground-truth k
     if name in ("SPC",):
         return fn(sim_mat, n_clusters)
+    # apc / dset choose k automatically
     return fn(sim_mat)
