@@ -46,9 +46,9 @@ def main():
                     None if st is None else st["epsilon"],
                     None if st is None else st["compression"],
                     None if st is None else st["b"],
-                    None if st is None else st["density_threshold"],
-                    None if st is None else st["preference_quantile"],
-                    None if st is None else st["weight_threshold"],
+                    None if st is None else st.get("density_threshold"),
+                    None if st is None else st.get("preference_quantile"),
+                    None if st is None else st.get("weight_threshold"),
                 ),
                 flush=True,
             )

@@ -42,23 +42,24 @@ NC = number of clusters.
   does not work well on synthetic data because regular pairs demand random edge
   distribution found in real data.
 
-### Local-zip coverage (16 of 20)
+### Local-zip coverage (18 of 20)
 
-`src/datasets.py` parses 16 datasets directly from the zips in `data/` (no
-network): Banknote, Sonar, Ecoli, Glass, Segment, Libras, Raisin, Rice, Seeds,
-Spambase, Spectf, Landsat, Thyroid, Wine, **Landmine**, **Leaves** — handling
-CSV / whitespace-delimited / ARFF / XLS / image formats, string-label columns and
-header rows. Specifically:
+`src/datasets.py` parses 18 datasets from local files in `data/` (no network):
+Banknote, Sonar, Ecoli, Glass, Segment, Libras, Raisin, Rice, Seeds, Spambase,
+Spectf, Landsat, Thyroid, Wine, **Landmine**, **Leaves**, **Dutchnumeral**,
+**USPS** — handling CSV / whitespace-delimited / ARFF / XLS / image formats,
+string-label columns and header rows. Specifically:
 - **Landmine** is extracted from `Mine Dataset.rar` (inside the zip) via
   `bsdtar`, reading the `Normalized_Data` sheet (V, H, S features; M class).
-- **Leaves** are 1600 JPG images across 100 species folders; we extract a
-  64-dim feature vector per image by resizing to 8×8 grayscale (an
-  approximation of the paper's exact 64-dim features, which are not specified in
-  the paper text).
+- **Leaves** reads the UCI zip's 64-dim shape-descriptor file
+  (`100 leaves plant species/data_Sha_64.txt`; species name + 64 features per
+  row), matching Table 1's ND=64 without image resizing.
+- **Dutchnumeral** concatenates the six UCI *Multiple Features* (mfeat) views —
+  fac (216) + fou (76) + kar (64) + pix (240) + zer (47) + mor (6) = 649 dims,
+  200 rows per digit 0–9 in file order.
+- **USPS** loads Roweis' `usps_all.mat` (11000 × 256, 1100 images per digit).
 
-### Fallback (4)
+### Fallback (2)
 
-Appendicitis, SCC (via `ucimlrepo` if installed); USPS, Dutchnumeral — synthetic
-stand-ins. Note: the provided `tunadromd.zip` is a different Android-malware
-dataset (TUANDROMD, 242 attrs, 4466 rows), not the MPEG-7 Dutch numeral dataset
-(649 dims, 2000 rows) the paper uses.
+Appendicitis, SCC via `ucimlrepo` (id 544 / 840) if installed; without network
+these degrade to a synthetic stand-in so the code still runs.

@@ -4,15 +4,17 @@ Datasets are loaded from the local zip archives in ``data/`` (no network needed)
 Each loader returns ``(X, y)`` with ``X ∈ R^{n×d}`` (float64) and integer ``y`` in
 ``{0, …, NC−1}``. Results are cached as ``.npz`` under ``data/``.
 
-Coverage from the local zips (14 datasets):
+Coverage from the local files (18 datasets):
     Banknote, Sonar, Ecoli, Glass, Segment, Libras, Raisin, Rice, Seeds,
-    Spambase, Spectf, Landsat, Thyroid, Wine
+    Spambase, Spectf, Landsat, Thyroid, Wine, Landmine, Leaves,
+    Dutchnumeral (mfeat), USPS (usps_all.mat)
 
 Not in the local folder (fall back to ``ucimlrepo`` if installed, else a synthetic
 stand-in so the code still runs):
-    Appendicitis, SCC, USPS, Landmine (rar), Leaves (images), Dutchnumeral
+    Appendicitis, SCC
     (the provided tunadromd.zip is a different Android-malware dataset, not the
-    MPEG-7 Dutch numeral dataset used by the paper).
+    MPEG-7 Dutch numeral dataset used by the paper; USPS/Dutchnumeral/Leaves are
+    loaded from real local files, see the loaders below).
 
 See ``spec/datasets.md``.
 """

@@ -88,6 +88,22 @@ itself reports the enhancement degrading one dataset of twenty (Landsat);
 ours appears to be Appendicitis. All other datasets match the paper's regime.
 Full per-dataset tables: `RESULTS.md` (written by `python -m src.make_results`).
 
+*Update after targeted Leaves/Ecoli runs (`scripts/_verify_apc_dset_fix.py`,
+narrow σ∈{0.2,0.5,1} × ε∈{0.1,0.2} × ϵ∈{0.05,0.1} × b∈{8,16} grid plus a
+diagnostic sweep up to ϵ=0.2):*
+
+- **Ecoli reproduces fully**: Reg-SPC/APC/DSet reach NMI 0.80–0.89 vs paper's
+  0.71–0.78 and beat all eight recent algorithms on every metric; only
+  Reg-SPRG sits below its paper value (0.65 vs 0.69), consistent with the
+  documented on-R adaptation.
+- **Leaves splits**: Reg-SPC reaches 0.76 vs paper 0.82 and still beats all
+  recent baselines (best recent ≈0.74); Reg-APC/Reg-DSet plateau at
+  0.56–0.64 vs the paper's 0.75/0.79 across *every* legitimate setting tried
+  (recommended ranges and up to ϵ=0.2). The line-12 stop fires early there
+  (k settles at 64–133 while the data has 100 classes), so refinement stops
+  before the reduced graph can represent all classes — a per-dataset
+  behaviour we could not reproduce past, documented rather than tuned away.
+
 **(c) Mechanism.** The reduced graph R was verified to carry ground-truth-aligned
 block structure (majority-pure classes; intra-block density ≈0.8 vs ≈0.2–0.35
 between blocks) — the structure-preserving compression the lemma guarantees.
