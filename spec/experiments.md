@@ -18,7 +18,7 @@ report the **mean NMI and mean running time over all combinations of the other
 parameters** (not the best combo). Produce, per algorithm, three panels (one per
 parameter: ε, ϵ, b) showing NMI curves across datasets, plus running-time panels.
 
-Then verify the recommended narrow ranges (ε ∈ [0.1, 0.2], ϵ ∈ [0.02, 0.1],
+Then verify the recommended narrow ranges (ε ∈ {0.1, 0.15, 0.2}, ϵ ∈ {0.02, 0.03, 0.04, 0.05, 0.1},
 b ≤ 16) by comparing "all parameters" vs "selected parameters" results (Fig. 6).
 
 ## Exp 2 — Comparison with original algorithms (§4.2, Figs. 7–10)
@@ -28,8 +28,7 @@ For each dataset and algorithm, compare:
   (best `σ` by NMI).
 - **Enhanced (Reg-*)**: run Algorithm 1, taking the **best NMI** over the
   recommended `(ε, ϵ, b)` grid **and** `σ` (searched independently of the original
-  algorithm). For APC/DSet the search also includes the paper-silent knobs `d₀`
-  and APC preference quantile / DSet weight threshold.
+  algorithm).
 
 Report NMI and running time; the enhanced version should be better on both on the
 majority of datasets.
@@ -38,9 +37,11 @@ majority of datasets.
 
 Replace the regularity-partitioning step in Algorithm 1 with a **k-means-based**
 partition (partition the feature vectors into the same number of classes, keep all
-other steps identical). Compare the two partitioning strategies across the 4
-algorithms. Regularity partitioning should win on most datasets, demonstrating the
-advantage of edge-structure sampling over vertex sampling.
+other steps identical). The paper does not name `(ε, ϵ, b)` for this figure; we use
+the single recommended-range point `(ε, b, ϵ) = (0.15, 4, 0.05)` and search `σ`.
+Compare the two partitioning strategies across the 4 algorithms. Regularity
+partitioning should win on most datasets, demonstrating the advantage of
+edge-structure sampling over vertex sampling.
 
 ## Exp 3 — Comparison with recent algorithms (§4.3, Tables 2–5)
 

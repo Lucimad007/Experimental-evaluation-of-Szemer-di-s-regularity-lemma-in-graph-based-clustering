@@ -93,7 +93,21 @@ def run_exp3(args):
     print(f"[exp3] wrote {len(tables)} metric tables (recent + Reg-*)")
 
 
+def _force_utf8_console():
+    # Windows consoles default to cp1252, which cannot encode ε / ϵ / σ used in
+    # verbose output (e.g. experiments.py's per-run [err] line); without this
+    # those runs die with UnicodeEncodeError mid-experiment
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv=None):
+    _force_utf8_console()
     p = argparse.ArgumentParser(prog="python -m src.main", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["smoke", "exp1", "exp2", "exp2b", "exp3", "all"])

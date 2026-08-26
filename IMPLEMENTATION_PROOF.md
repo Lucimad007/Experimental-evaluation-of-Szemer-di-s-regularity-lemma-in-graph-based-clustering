@@ -742,7 +742,7 @@ EPSILON_GRID = (0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6)          # ε
 COMPRESSION_GRID = (0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2)          # ϵ
 B_GRID = (2, 3, 4, 5, 6, 7, 8, 9, 10, 16, 32, 64, 128, 256, 512, 1024)  # b
 
-EPSILON_RECOMMENDED = (0.1, 0.2)
+EPSILON_RECOMMENDED = (0.1, 0.15, 0.2)
 COMPRESSION_RECOMMENDED = (0.02, 0.03, 0.04, 0.05, 0.1)
 B_RECOMMENDED = (2, 3, 4, 5, 6, 7, 8, 9, 10, 16)
 ```
@@ -1010,14 +1010,11 @@ flagged ⚠️/❌ in the relevant section above.
 ### Paper-silent constants and how they were resolved
 
 The paper does not specify: APC preference (Frey–Dueck [10] allow the median
-or any shared value; original APC uses the median; Exp 2/3 search quantiles
-`{50, 90, 95, 99}` because median preference under-clusters a dense Eq. 3
-reduced graph when NC is large), DSet weight threshold (default `1/(1.5n)` from
-the Fiorucci et al. `dense_graph_reducer` lineage; Vascon et al. [27] use
-`1e-5`; Hou et al. PR 2023 [25] use `0.0001`; Exp 2/3 also search relative
-cores `rel50`/`rel80`/`rel95`), reduced-graph density threshold `d₀` (default 0
-keeps every Eq. 3 weight; Exp 2/3 search `{0, p90, p95}` for APC/DSet per
-§3.3 / Lemma 2), data preprocessing/normalization (→ none, features as
+or any shared value; reproduction uses the median, not a search), DSet weight
+threshold (default `1/(1.5n)` from the Fiorucci et al. `dense_graph_reducer`
+lineage; Vascon et al. [27] use `1e-5`; Hou et al. PR 2023 [25] use `0.0001`),
+reduced-graph density threshold `d₀` (default 0 keeps every Eq. 3 weight; not
+searched), data preprocessing/normalization (→ none, features as
 distributed in the UCI files), SPRG `φ`/variant/bootstrap (→ 5 / `adpt` / with
 replacement, see §2.1), and the number of k-means restarts (→ `n_init=10`).
 Seeds are pinned to 314 for reproducibility; the paper reports single/averaged

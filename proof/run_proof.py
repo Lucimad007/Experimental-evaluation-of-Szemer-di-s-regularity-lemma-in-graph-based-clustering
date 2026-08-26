@@ -10,6 +10,8 @@ clustering on R (line 19), label mapping (lines 20-24) and the V0 assignment
 Run:  python -m proof.run_proof
 """
 
+import sys
+
 import numpy as np
 
 from src import config
@@ -22,6 +24,13 @@ from src.szemeredi import build_regularity_lemma
 
 
 def main():
+    # this script prints ϵ / ε (line 3 / line 12 of Algorithm 1); Windows
+    # consoles default to cp1252 and would raise UnicodeEncodeError here
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     X, y = load_dataset("Wine")
     n, _, n_clusters = config.DATASETS["Wine"]
     print(f"Wine: n={n}, ground-truth clusters={n_clusters}")

@@ -149,9 +149,9 @@ def parameter_claims(df):
                     by_cr.time.idxmax() > by_cr.time.idxmin())
 
     # C8: all vs selected (Fig. 6)
-    sel = df.apply(lambda r: r["epsilon"] in config.EPSILON_RECOMMENDED
-                   and r["compression"] in config.COMPRESSION_RECOMMENDED
-                   and r["b"] in config.B_RECOMMENDED, axis=1)
+    sel = df.apply(lambda r: config.in_grid(r["epsilon"], config.EPSILON_RECOMMENDED)
+                   and config.in_grid(r["compression"], config.COMPRESSION_RECOMMENDED)
+                   and int(r["b"]) in config.B_RECOMMENDED, axis=1)
     all_m = df.nmi.mean()
     sel_m = df[sel].nmi.mean()
     print(f"  C8: mean NMI all parameters {all_m:.3f} vs selected ranges {sel_m:.3f}")

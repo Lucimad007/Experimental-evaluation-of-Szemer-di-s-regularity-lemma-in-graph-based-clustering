@@ -2,24 +2,37 @@
 
 Sync status: implemented in `src/config.py` and `src/experiments.py`
 
-## Three regularity-partitioning parameters
+Quoted from Hou et al., Pattern Recognition 171 (2026) 112205, §4.1.
+Reproduction searches **only** these values.
 
-| Param | Meaning | Range tested | Recommended (paper) |
-|-------|---------|--------------|---------------------|
-| `ε`   | regularity constant (Def. 1); share of a class used to check regularity | {0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6} | 0.1 – 0.2 |
-| `ϵ`   | max compression ratio `|R|/|G|`; `⌊1/ϵ⌋` = min class size | {0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2} | 0.02 – 0.1 |
-| `b`   | initial number of classes (initial cardinality of `R`) | {2,…,10, 16, 32, 64, 128, 256, 512, 1024} with `b < |G|` | `b ≤ 16` |
+## Three regularity-partitioning parameters (tested)
+
+| Param | Meaning | Values tested (§4.1) | Recommended / "selected" (Fig. 6, Exp 2/3) |
+|-------|---------|----------------------|--------------------------------------------|
+| `ε`   | regularity constant (Def. 1); share of a class used to check regularity | `{0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6}` | `{0.1, 0.15, 0.2}` ("0.1 to 0.2") |
+| `ϵ`   | max compression ratio `|R|/|G|`; `⌊1/ϵ⌋` = min class size | `{0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2}` | `{0.02, 0.03, 0.04, 0.05, 0.1}` ("0.02 to 0.1") |
+| `b`   | initial number of classes (initial cardinality of `R`) | `{2,…,10, 16, 32, 64, 128, 256, 512, 1024}` with `b < |G|` | `{2,…,10, 16}` (`b ≤ 16`) |
 
 ## σ grid (similarity)
 
-`σ ∈ {0.1, 0.2, 0.5, 1, 2, 5, 10}` (SPC, APC, DSet only).
+`σ ∈ {0.1, 0.2, 0.5, 1, 2, 5, 10}` (SPC, APC, DSet only). SPRG does not use `σ`.
+
+## Which experiment uses which grid
+
+| Experiment | Search | How a number is reported |
+|------------|--------|--------------------------|
+| Exp 1 (Figs. 2–5) | full `ε × ϵ × b × σ` | **mean** NMI/time over the other two partitioning parameters (and σ) |
+| Exp 1 (Fig. 6) | same runs | mean over **all** tested `(ε,ϵ,b)` vs mean over **selected** ranges |
+| Exp 2 (Figs. 7–10) | original: best `σ`; enhanced: best NMI over selected `(ε,ϵ,b) × σ` | one original vs one enhanced per dataset/algorithm |
+| Exp 2b (Fig. 11) | `σ` grid at the single recommended point `(ε, b, ϵ) = (0.15, 4, 0.05)` | regularity vs k-means at the same `k` |
+| Exp 3 (Tables 2–5) | same enhanced search as Exp 2 | best-NMI Reg-* joined to the paper's 8 recent-algorithm columns |
 
 ## Evaluation protocol (§4.1)
 
 Instead of fixing two parameters and varying the third (grid-search best combo), the
 paper uses the **mean result over all combinations of the other two parameters** to
 show the influence of the third. Example: for `ε = 0.1`, average NMI over all
-`(ϵ, b)` with `ϵ` from its grid and `b` from its grid.
+`(ϵ, b)` with `ϵ` from its grid and `b` from its grid (and `σ` for SPC/APC/DSet).
 
 ## Findings (§4.1)
 
@@ -33,14 +46,8 @@ show the influence of the third. Example: for `ε = 0.1`, average NMI over all
   outweighs skipped iterations) and does not improve results. With `b ≤ 16` results
   vary in a complex pattern; recommend `b ≤ 16`.
 
-## Paper-silent knobs searched in Exp 2 / Exp 3 (best NMI)
+## Not searched (paper-silent defaults)
 
-These are not in the paper's σ / ε / ϵ / b grids. They complete algorithms the
-paper specifies only qualitatively, and are searched only for the *enhanced*
-(Reg-*) runs — original APC/DSet keep the Frey–Dueck median and `1/(1.5 n)`.
-
-| Knob | Algorithms | Values | Source |
-|------|------------|--------|--------|
-| APC preference quantile | APC | {50, 90, 95, 99} | Frey–Dueck [10]: shared preference may be the median or varied for more/fewer clusters |
-| DSet support cutoff | DSet | {`None`=`1/(1.5n)`, `rel50`, `rel80`, `rel95`} | §2.3 "greater than a threshold" (value unnamed) |
-| Reduced-graph `d₀` | APC, DSet | {0, `p90`, `p95`} | §3.3 / Lemma 2: edges only if density > `d₀` (value unnamed). SPC/SPRG keep `d₀=0` |
+The paper does not name APC preference, DSet weight cutoff, or reduced-graph `d₀`.
+Reproduction **does not** grid-search them: APC uses the Frey–Dueck median,
+DSet uses `1/(1.5 n)`, `d₀ = 0` (every Eq. 3 weight kept).

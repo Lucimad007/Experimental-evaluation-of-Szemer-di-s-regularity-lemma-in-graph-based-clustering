@@ -20,7 +20,10 @@ def gaussian_similarity(X, sigma):
     """build the n×n similarity matrix for features ``x`` and scalar ``sigma``.
 
     uses ``s(x, y) = exp(−d(x, y)/(d̄·σ))`` with euclidean distance and ``d̄``
-    the mean of all pairwise distances. diagonal is zero.
+    the mean pairwise distance. the paper says "average of all pairwise
+    distances"; we average the n(n−1) positive off-diagonal distances (the
+    zero diagonal excluded — an ≈(n−1)/n rescaling of d̄, immaterial across
+    the σ grid). diagonal is zero.
     """
     # feature matrix
     X = np.asarray(X, dtype=float)

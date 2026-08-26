@@ -50,13 +50,9 @@ points to gradually identify exemplars (cluster centers) and members. All points
 are initially potential exemplars; messages (responsibility and availability) are
 updated by minimizing an energy function. The number of clusters is determined
 automatically (no `k` needed). We use the standard Frey–Dueck algorithm
-(`sklearn.cluster.AffinityPropagation`). The shared preference is a percentile of
-positive off-diagonal similarities: **50 = median** (Frey–Dueck's "moderate"
-default); higher quantiles yield more exemplars, which Frey–Dueck say to use
-"if a large number of clusters is desired". Exp 2/3 search `{50, 90, 95, 99}`
-because a dense Eq. 3 reduced graph is much more uniform than `G`, and the median
-preference then under-clusters when `NC` is large (Leaves). Original APC keeps
-the median.
+(`sklearn.cluster.AffinityPropagation`). The shared preference is the **median**
+of positive off-diagonal similarities (Frey–Dueck's "moderate" default). This is
+not a searched parameter.
 
 ## 2.3 Dominant set clustering (DSet)
 
@@ -75,8 +71,4 @@ the replicator-dynamics implementation (Pavan & Pelillo 2007; Bulo, Pelillo & Bo
 2011) used in the reference code. Default weight threshold `1/(n * 1.5)` and a
 stop when fewer than 5% of points remain unclustered (Fiorucci / DSLib lineage;
 the paper only says "greater than a threshold"; Vascon et al. [27] default to
-`1e-5`, Hou et al. PR 2023 [25] use `0.0001`). Exp 2/3 also search relative
-cutoffs `rel50` / `rel80` / `rel95` (keep vertices at that fraction of the current
-maximum replicator weight, extract until every vertex is assigned). On a nearly
-uniform reduced graph the absolute cutoff returns a handful of large sets;
-relative cores recover a cluster count compatible with large-`NC` datasets.
+`1e-5`, Hou et al. PR 2023 [25] use `0.0001`). This cutoff is not grid-searched.

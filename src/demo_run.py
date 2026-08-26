@@ -41,6 +41,14 @@ def _graph(algo, X, sigma, n_clusters=None, sprg_graph=None):
 
 
 def main():
+    # verbose experiment output uses ε / ϵ / σ, which cp1252 consoles cannot encode
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     config.SPRG_TREES = SPRG_TREES_DEMO
     print("=" * 78)
     print("Exp 2 — Enhanced (Reg-*) vs Original algorithms (NMI / ACC)")
