@@ -42,22 +42,32 @@ def _needs_sigma(name):
     return name in ("SPC", "APC", "DSet")
 
 
-def _iter_enhanced_settings(algo, n, epsilon_grid, compression_grid, b_grid, sigma_grid):
-    """Cartesian product of the paper's §4.1 grids only (ε × ϵ × b × σ).
+def _iter_enhanced_settings(algo, n, epsilon_grid, compression_grid, b_grid, sigma_grid,
+                            stop_rules=("algorithm1", "theoretical"),
+                            d0_grid=config.D0_GRID):
+    """Cartesian product of the paper's §4.1 grids (ε × ϵ × b × σ), plus the
+    partition-loop stop rule: Algorithm 1 line 12 ``n_ir < k(k−1)/2``
+    ("algorithm1") vs the §3.2 Step 3 theoretical rule ``n_ir ≤ ε·C(k,2)``
+    ("theoretical"), plus the §3.3 reduced-graph adjacency threshold ``d₀``
+    (paper-silent value; searched as a documented extension, 0 = keep every
+    Eq. 3 weight).
 
     SPRG has no σ. ``b < n`` is the paper's ``b < |G|`` constraint.
-    APC uses the Frey–Dueck median preference; DSet uses ``1/(1.5 n)``; ``d₀ = 0``.
+    APC uses the Frey–Dueck median preference; DSet uses ``1/(1.5 n)``.
     """
     # sprg has a dummy σ slot so the product stays 4-way
     sigmas = sigma_grid if _needs_sigma(algo) else [None]
     # paper: b < |g|
     bs = config.b_values(n, b_grid or config.B_RECOMMENDED)
-    for sigma, eps, cr, b in itertools.product(sigmas, epsilon_grid, compression_grid, bs):
+    for sigma, eps, cr, b, stop_rule, d0 in itertools.product(
+            sigmas, epsilon_grid, compression_grid, bs, stop_rules, d0_grid):
         yield {
             "sigma": sigma,
             "epsilon": eps,
             "compression": cr,
             "b": b,
+            "stop_rule": stop_rule,
+            "d0": d0,
         }
 
 
@@ -94,28 +104,32 @@ def _eval_on_reduced(algo, S, y, n_clusters, R, classes, part_info):
 
 
 def _best_over_enhanced_grid(algo, X, y, n_clusters, epsilon_grid, compression_grid,
-                             b_grid, sigma_grid, verbose=False):
-    """Best-NMI enhanced run, caching the regularity partition per (σ, ε, ϵ, b)."""
+                             b_grid, sigma_grid, stop_rules=("algorithm1", "theoretical"),
+                             d0_grid=config.D0_GRID, verbose=False):
+    """Best-NMI enhanced run, caching the regularity partition per (σ, ε, ϵ, b, stop rule, d₀)."""
     n = len(y)
     best = None
     best_nmi = -1.0
     best_info = None
     best_st = None
-    # cache r per (σ, ε, ϵ, b)
+    # cache r per (σ, ε, ϵ, b, stop rule, d₀)
     cache = {}
     S_cache = {}
-    for st in _iter_enhanced_settings(algo, n, epsilon_grid, compression_grid, b_grid, sigma_grid):
+    for st in _iter_enhanced_settings(algo, n, epsilon_grid, compression_grid, b_grid,
+                                      sigma_grid, stop_rules=stop_rules, d0_grid=d0_grid):
         sk = st["sigma"]
         if sk not in S_cache:
             S_cache[sk] = _graph_for(algo, X, sk, n_clusters)
         S = S_cache[sk]
-        key = (st["sigma"], st["epsilon"], st["compression"], st["b"])
+        key = (st["sigma"], st["epsilon"], st["compression"], st["b"],
+               st["stop_rule"], st["d0"])
         if key not in cache:
             try:
                 # algorithm 1 lines 1–18
                 cache[key] = build_reduced_graph(
                     S, st["epsilon"], st["b"], st["compression"],
-                    density_threshold=config.DENSITY_THRESHOLD, verbose=verbose,
+                    density_threshold=st["d0"], verbose=verbose,
+                    stop_rule=st["stop_rule"],
                 )
             except Exception:
                 cache[key] = None
@@ -149,6 +163,8 @@ def experiment1_parameter_influence(
     compression_grid=None,
     b_grid=None,
     sigma_grid=None,
+    stop_rules=("algorithm1", "theoretical"),
+    d0_grid=config.D0_GRID,
     out_dir=None,
     verbose=False,
 ):
@@ -156,7 +172,9 @@ def experiment1_parameter_influence(
 
     For each algorithm/dataset run the enhanced algorithm over the full grid and
     record (NMI, time). Then aggregate by taking the mean over all combinations of
-    the other two parameters to show the influence of the third.
+    the other two parameters to show the influence of the third. The stop rule
+    and the §3.3 threshold d₀ are searched as documented paper-silent extensions
+    (d₀ grid includes 0, the pure-paper setting).
     """
     dataset_names = dataset_names or list(config.DATASETS.keys())
     algorithms = algorithms or config.BASE_ALGORITHMS
@@ -168,19 +186,27 @@ def experiment1_parameter_influence(
     out_dir = Path(out_dir or RESULTS_DIR) / "exp1_parameter_influence"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # resume from the checkpoint (e.g. after a power outage): datasets already
-    # present in raw_runs_partial.csv are skipped entirely
+    # resume from the checkpoint (e.g. after a power outage): (dataset, algo,
+    # stop rule, d₀) groups already in raw_runs_partial.csv are skipped entirely
     rows = []
+    done = set()
     partial_csv = out_dir / "raw_runs_partial.csv"
     if partial_csv.exists():
         try:
             old = pd.read_csv(partial_csv)
+            if "stop_rule" not in old.columns:
+                old["stop_rule"] = "algorithm1"
+            if "d0" not in old.columns:
+                old["d0"] = 0.0
             rows = old.to_dict("records")
-            done = set(old["dataset"].unique())
+            done = set(zip(old["dataset"], old["algo"], old["stop_rule"], old["d0"]))
             before = len(dataset_names)
-            dataset_names = [d for d in dataset_names if d not in done]
-            print(f"[exp1] resuming: {len(done)} dataset(s) already checkpointed, "
-                  f"{len(dataset_names)}/{before} remaining")
+            dataset_names = [d for d in dataset_names
+                             if not all((d, a, sr, d0) in done
+                                        for a in algorithms for sr in stop_rules
+                                        for d0 in d0_grid)]
+            print(f"[exp1] resuming: {len(done)} (dataset, algo, stop rule, d0) groups "
+                  f"checkpointed, {len(dataset_names)}/{before} datasets remaining")
         except Exception:
             rows = []
     for ds_name in tqdm(dataset_names, desc="Exp1 datasets"):
@@ -191,35 +217,42 @@ def experiment1_parameter_influence(
             continue
         n, _, n_clusters = config.DATASETS[ds_name]
         for algo in algorithms:
-            sigmas = sigma_grid if _needs_sigma(algo) else [None]
-            for sigma in sigmas:
-                S = _graph_for(algo, X, sigma, n_clusters)
-                bs = _b_grid_for(n, b_grid)
-                # paper §4.1: vary ε, ϵ, b
-                for eps in epsilon_grid:
-                    for cr in compression_grid:
-                        for b in bs:
-                            try:
-                                labels, info = enhance_clustering(
-                                    make_base_algorithm(algo, X=X),
-                                    S,
-                                    n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
-                                    epsilon=eps,
-                                    b=b,
-                                    compression_rate=cr,
-                                    verbose=verbose,
-                                )
-                            except Exception as e:
-                                if verbose:
-                                    print(f"    [err] {ds_name}/{algo}/σ={sigma}/ε={eps}/ϵ={cr}/b={b}: {e}")
-                                continue
-                            m = evaluate(y, labels)
-                            rows.append({
-                                "dataset": ds_name, "algo": algo, "sigma": sigma,
-                                "epsilon": eps, "compression": cr, "b": b,
-                                "nmi": m["nmi"], "acc": m["acc"], "ari": m["ari"], "ri": m["ri"],
-                                "time": info["total_time"], "k": info["k"],
-                            })
+            for stop_rule in stop_rules:
+                for d0 in d0_grid:
+                    if (ds_name, algo, stop_rule, d0) in done:
+                        continue
+                    sigmas = sigma_grid if _needs_sigma(algo) else [None]
+                    for sigma in sigmas:
+                        S = _graph_for(algo, X, sigma, n_clusters)
+                        bs = _b_grid_for(n, b_grid)
+                        # paper §4.1: vary ε, ϵ, b
+                        for eps in epsilon_grid:
+                            for cr in compression_grid:
+                                for b in bs:
+                                    try:
+                                        labels, info = enhance_clustering(
+                                            make_base_algorithm(algo, X=X),
+                                            S,
+                                            n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
+                                            epsilon=eps,
+                                            b=b,
+                                            compression_rate=cr,
+                                            stop_rule=stop_rule,
+                                            density_threshold=d0,
+                                            verbose=verbose,
+                                        )
+                                    except Exception as e:
+                                        if verbose:
+                                            print(f"    [err] {ds_name}/{algo}/σ={sigma}/ε={eps}/ϵ={cr}/b={b}/{stop_rule}/d0={d0}: {e}")
+                                        continue
+                                m = evaluate(y, labels)
+                                rows.append({
+                                    "dataset": ds_name, "algo": algo, "sigma": sigma,
+                                    "epsilon": eps, "compression": cr, "b": b,
+                                    "stop_rule": stop_rule, "d0": d0,
+                                    "nmi": m["nmi"], "acc": m["acc"], "ari": m["ari"], "ri": m["ri"],
+                                    "time": info["total_time"], "k": info["k"],
+                                })
         # checkpoint after each dataset: a crash preserves all completed work
         pd.DataFrame(rows).to_csv(out_dir / "raw_runs_partial.csv", index=False)
 
@@ -278,6 +311,8 @@ def _summarize_influence(df, out_dir):
 def experiment2_enhanced_vs_original(
     dataset_names=None,
     algorithms=None,
+    stop_rules=("algorithm1", "theoretical"),
+    d0_grid=config.D0_GRID,
     out_dir=None,
     verbose=False,
 ):
@@ -287,18 +322,21 @@ def experiment2_enhanced_vs_original(
     out_dir = Path(out_dir or RESULTS_DIR) / "exp2_enhanced_vs_original"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # resume: (dataset, algo) pairs already in the partial CSV are skipped
+    # resume: (dataset, algo, stop rule) triples already in the partial CSV are skipped
     rows = []
     done_pairs = set()
     partial_csv = out_dir / "enhanced_vs_original_partial.csv"
     if partial_csv.exists():
         try:
             old = pd.read_csv(partial_csv)
+            if "stop_rule" not in old.columns:
+                old["stop_rule"] = "algorithm1"
             rows = old.to_dict("records")
-            done_pairs = set(zip(old["dataset"], old["algo"]))
+            done_pairs = set(zip(old["dataset"], old["algo"], old["stop_rule"]))
             dataset_names = [d for d in dataset_names
-                             if not all((d, a) in done_pairs for a in algorithms)]
-            print(f"[exp2] resuming: {len(rows)} (dataset, algo) rows checkpointed")
+                             if not all((d, a, sr) in done_pairs
+                                        for a in algorithms for sr in stop_rules)]
+            print(f"[exp2] resuming: {len(rows)} (dataset, algo, stop rule) rows checkpointed")
         except Exception:
             rows = []
     for ds_name in tqdm(dataset_names, desc="Exp2 datasets"):
@@ -309,9 +347,7 @@ def experiment2_enhanced_vs_original(
             continue
         n, _, n_clusters = config.DATASETS[ds_name]
         for algo in algorithms:
-            if (ds_name, algo) in done_pairs:
-                continue
-            # pick best sigma for the original algorithm (sprg ignores sigma)
+            # best original is independent of the stop rule: compute once
             best_orig = None
             best_orig_nmi = -1
             best_sigma = None
@@ -331,32 +367,40 @@ def experiment2_enhanced_vs_original(
                     best_sigma = sigma
             if best_orig is None:
                 continue
-            # enhanced: best nmi over σ × recommended (ε, ϵ, b) — the paper's
-            # "selected parameters" of §4.1 / fig. 6. σ is searched
-            # independently of the original algorithm (tables 2–5 report the
-            # best enhanced config, not the original's σ).
-            best_enh, best_info, best_st = _best_over_enhanced_grid(
-                algo, X, y, n_clusters,
-                config.EPSILON_RECOMMENDED,
-                config.COMPRESSION_RECOMMENDED,
-                config.B_RECOMMENDED,
-                config.SIGMA_GRID if _needs_sigma(algo) else [None],
-                verbose=verbose,
-            )
-            if best_enh is None:
-                continue
-            rows.append({
-                "dataset": ds_name, "algo": algo,
-                "orig_nmi": best_orig[1]["nmi"], "orig_acc": best_orig[1]["acc"],
-                "orig_time": best_orig[2],
-                "enh_nmi": best_enh["nmi"], "enh_acc": best_enh["acc"],
-                "enh_time": best_info["total_time"],
-                "enh_k": best_info["k"],
-                "enh_sigma": best_st["sigma"],
-                "enh_epsilon": best_st["epsilon"],
-                "enh_compression": best_st["compression"],
-                "enh_b": best_st["b"],
-            })
+            for stop_rule in stop_rules:
+                if (ds_name, algo, stop_rule) in done_pairs:
+                    continue
+                # enhanced: best nmi over σ × recommended (ε, ϵ, b) — the paper's
+                # "selected parameters" of §4.1 / fig. 6. σ is searched
+                # independently of the original algorithm (tables 2–5 report the
+                # best enhanced config, not the original's σ). d₀ (§3.3) is
+                # searched as a documented paper-silent extension.
+                best_enh, best_info, best_st = _best_over_enhanced_grid(
+                    algo, X, y, n_clusters,
+                    config.EPSILON_RECOMMENDED,
+                    config.COMPRESSION_RECOMMENDED,
+                    config.B_RECOMMENDED,
+                    config.SIGMA_GRID if _needs_sigma(algo) else [None],
+                    stop_rules=stop_rules,
+                    d0_grid=d0_grid,
+                    verbose=verbose,
+                )
+                if best_enh is None:
+                    continue
+                rows.append({
+                    "dataset": ds_name, "algo": algo, "stop_rule": stop_rule,
+                    "orig_nmi": best_orig[1]["nmi"], "orig_acc": best_orig[1]["acc"],
+                    "orig_time": best_orig[2],
+                    "enh_nmi": best_enh["nmi"], "enh_acc": best_enh["acc"],
+                    "enh_time": best_info["total_time"],
+                    "enh_k": best_info["k"],
+                    "enh_sigma": best_st["sigma"],
+                    "enh_epsilon": best_st["epsilon"],
+                    "enh_compression": best_st["compression"],
+                    "enh_b": best_st["b"],
+                    "enh_stop_rule": best_st["stop_rule"],
+                    "enh_d0": best_st["d0"],
+                })
         # checkpoint after each dataset: a crash preserves all completed work
         pd.DataFrame(rows).to_csv(out_dir / "enhanced_vs_original_partial.csv", index=False)
 
@@ -370,27 +414,36 @@ def experiment2_enhanced_vs_original(
 def experiment2b_regularity_vs_kmeans(
     dataset_names=None,
     algorithms=None,
+    stop_rules=("algorithm1", "theoretical"),
     out_dir=None,
     verbose=False,
 ):
-    """Exp 2b (§4.2, Fig. 11): regularity partitioning vs k-means partitioning."""
+    """Exp 2b (§4.2, Fig. 11): regularity partitioning vs k-means partitioning.
+
+    d₀ is deliberately NOT searched here: the fig. 11 ablation must keep every
+    other part unchanged between the two partitioning strategies, so both use
+    the default d₀ = 0.
+    """
     dataset_names = dataset_names or list(config.DATASETS.keys())
     algorithms = algorithms or config.BASE_ALGORITHMS
     out_dir = Path(out_dir or RESULTS_DIR) / "exp2b_regularity_vs_kmeans"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # resume: (dataset, algo) pairs already in the partial CSV are skipped
+    # resume: (dataset, algo, stop rule) triples already in the partial CSV are skipped
     rows = []
     done_pairs = set()
     partial_csv = out_dir / "regularity_vs_kmeans_partial.csv"
     if partial_csv.exists():
         try:
             old = pd.read_csv(partial_csv)
+            if "stop_rule" not in old.columns:
+                old["stop_rule"] = "algorithm1"
             rows = old.to_dict("records")
-            done_pairs = set(zip(old["dataset"], old["algo"]))
+            done_pairs = set(zip(old["dataset"], old["algo"], old["stop_rule"]))
             dataset_names = [d for d in dataset_names
-                             if not all((d, a) in done_pairs for a in algorithms)]
-            print(f"[exp2b] resuming: {len(rows)} (dataset, algo) rows checkpointed")
+                             if not all((d, a, sr) in done_pairs
+                                        for a in algorithms for sr in stop_rules)]
+            print(f"[exp2b] resuming: {len(rows)} (dataset, algo, stop rule) rows checkpointed")
         except Exception:
             rows = []
     for ds_name in tqdm(dataset_names, desc="Exp2b datasets"):
@@ -401,8 +454,6 @@ def experiment2b_regularity_vs_kmeans(
             continue
         n, _, n_clusters = config.DATASETS[ds_name]
         for algo in algorithms:
-            if (ds_name, algo) in done_pairs:
-                continue
             best_sigma = 1.0
             best_nmi = -1
             # choose σ at the fig. 11 operating point (ε, b, ϵ) = (0.15, 4, 0.05)
@@ -423,34 +474,39 @@ def experiment2b_regularity_vs_kmeans(
                     best_nmi = m["nmi"]
                     best_sigma = sigma
             S = _graph_for(algo, X, best_sigma, n_clusters)
-            try:
-                # regularity partitioning (edge/structure sampling)
-                reg_labels, reg_info = enhance_clustering(
-                    make_base_algorithm(algo, X=X), S,
-                    n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
-                    epsilon=config.EXP2B_EPSILON, b=config.EXP2B_B,
-                    compression_rate=config.EXP2B_COMPRESSION, verbose=verbose,
-                )
-                # "keep all the other parts unchanged": the k-means partition
-                # uses the same number of classes as the regularity partition
-                target_k = int(reg_info["k"])
-                # vertex sampling baseline (fig. 11)
-                km_labels, km_info = kmeans_partition_clustering(
-                    make_base_algorithm(algo, X=X), X, S,
-                    n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
-                    k_classes=target_k,
-                )
-            except Exception as e:
-                if verbose:
-                    print(f"  [err] {ds_name}/{algo}: {e}")
-                continue
-            reg_m = evaluate(y, reg_labels)
-            km_m = evaluate(y, km_labels)
-            rows.append({
-                "dataset": ds_name, "algo": algo, "target_k": target_k,
-                "reg_nmi": reg_m["nmi"], "reg_time": reg_info["total_time"],
-                "km_nmi": km_m["nmi"], "km_time": km_info["total_time"],
-            })
+            for stop_rule in stop_rules:
+                if (ds_name, algo, stop_rule) in done_pairs:
+                    continue
+                try:
+                    # regularity partitioning (edge/structure sampling)
+                    reg_labels, reg_info = enhance_clustering(
+                        make_base_algorithm(algo, X=X), S,
+                        n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
+                        epsilon=config.EXP2B_EPSILON, b=config.EXP2B_B,
+                        compression_rate=config.EXP2B_COMPRESSION,
+                        stop_rule=stop_rule, verbose=verbose,
+                    )
+                    # "keep all the other parts unchanged": the k-means partition
+                    # uses the same number of classes as the regularity partition
+                    target_k = int(reg_info["k"])
+                    # vertex sampling baseline (fig. 11)
+                    km_labels, km_info = kmeans_partition_clustering(
+                        make_base_algorithm(algo, X=X), X, S,
+                        n_clusters=n_clusters if algo in ("SPC", "SPRG") else None,
+                        k_classes=target_k,
+                    )
+                except Exception as e:
+                    if verbose:
+                        print(f"  [err] {ds_name}/{algo}/{stop_rule}: {e}")
+                    continue
+                reg_m = evaluate(y, reg_labels)
+                km_m = evaluate(y, km_labels)
+                rows.append({
+                    "dataset": ds_name, "algo": algo, "stop_rule": stop_rule,
+                    "target_k": target_k,
+                    "reg_nmi": reg_m["nmi"], "reg_time": reg_info["total_time"],
+                    "km_nmi": km_m["nmi"], "km_time": km_info["total_time"],
+                })
         # checkpoint after each dataset: a crash preserves all completed work
         pd.DataFrame(rows).to_csv(out_dir / "regularity_vs_kmeans_partial.csv", index=False)
 
@@ -461,8 +517,10 @@ def experiment2b_regularity_vs_kmeans(
 
 
 # --------------------------------------------------------------------- Exp 3
-def _best_enhanced_metrics(algo, X, y, n_clusters, verbose=False):
-    """Best enhanced (Reg-*) metrics over the paper's recommended (ε, ϵ, b, σ) grid.
+def _best_enhanced_metrics(algo, X, y, n_clusters, stop_rules=("algorithm1", "theoretical"),
+                           d0_grid=config.D0_GRID, verbose=False):
+    """Best enhanced (Reg-*) metrics over the paper's recommended (ε, ϵ, b, σ) grid,
+    both stop rules and the d₀ grid.
 
     Returns a dict with nmi/acc/ari/ri at the best-NMI configuration, or None.
     """
@@ -472,18 +530,22 @@ def _best_enhanced_metrics(algo, X, y, n_clusters, verbose=False):
         config.COMPRESSION_RECOMMENDED,
         config.B_RECOMMENDED,
         config.SIGMA_GRID if _needs_sigma(algo) else [None],
+        stop_rules=stop_rules,
+        d0_grid=d0_grid,
         verbose=verbose,
     )
     return best
 
 
-def experiment3_vs_recent(dataset_names=None, out_dir=None, verbose=False):
+def experiment3_vs_recent(dataset_names=None, stop_rules=("algorithm1", "theoretical"),
+                          d0_grid=config.D0_GRID, out_dir=None, verbose=False):
     """Exp 3 (§4.3, Tables 2–5): enhanced algorithms vs recent algorithms.
 
     Runs Reg-SPC, Reg-APC, Reg-DSet, Reg-SPRG on each dataset (best config over the
-    recommended parameter grid), computes NMI/ACC/ARI/RI, and joins them with the
-    8 recent-algorithm reference columns transcribed from Tables 2–5 of the paper.
-    Produces one combined table per metric (recent + Reg-* columns + mean row).
+    recommended parameter grid, both partition-loop stop rules and the d₀ grid),
+    computes NMI/ACC/ARI/RI, and joins them with the 8 recent-algorithm reference
+    columns transcribed from Tables 2–5 of the paper. Produces one combined table
+    per metric (recent + Reg-* columns + mean row).
     """
     from .baselines import DATASET_ORDER, RECENT_ALGOS, RECENT_TABLES
 
@@ -524,10 +586,12 @@ def experiment3_vs_recent(dataset_names=None, out_dir=None, verbose=False):
                     for algo in RECENT_ALGOS:
                         recent_vals[metric][algo] = rec[algo]
                     break
-        # reg-* enhanced metrics (best nmi over the recommended grid)
+        # reg-* enhanced metrics (best nmi over the recommended grid + both stop rules)
         reg_vals = {metric: {} for metric in metric_rows}
         for algo in reg_algos:
-            m = _best_enhanced_metrics(algo, X, y, n_clusters, verbose=verbose)
+            m = _best_enhanced_metrics(algo, X, y, n_clusters,
+                                       stop_rules=stop_rules, d0_grid=d0_grid,
+                                       verbose=verbose)
             if m is None:
                 for metric in metric_rows:
                     reg_vals[metric][f"Reg-{algo}"] = float("nan")

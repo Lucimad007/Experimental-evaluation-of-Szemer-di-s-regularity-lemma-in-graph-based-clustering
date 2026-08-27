@@ -92,9 +92,13 @@ def merge_exp1():
         return
     old = pd.read_csv(main_csv)
     new = pd.read_csv(new_csv)
-    # a (dataset, algo, sigma, epsilon, compression, b) run is unique; replace
-    # old SPRG rows with the fresh ones, keeping any dataset the new run lacks
+    # a (dataset, algo, sigma, epsilon, compression, b[, stop_rule]) run is unique;
+    # replace old SPRG rows with the fresh ones, keeping any dataset the new run lacks
     key = ["dataset", "algo", "sigma", "epsilon", "compression", "b"]
+    if "stop_rule" in old.columns and "stop_rule" in new.columns:
+        key.append("stop_rule")
+    if "d0" in old.columns and "d0" in new.columns:
+        key.append("d0")
     new_keys = set(map(tuple, new[key].to_numpy().tolist()))
     old_kept = old[~((old["algo"] == "SPRG") & old[key].apply(tuple, axis=1).isin(new_keys))]
     merged = pd.concat([old_kept, new]).sort_values(key).reset_index(drop=True)

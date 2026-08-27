@@ -87,3 +87,46 @@ that is the exponential growth the paper's first modification exists to avoid.
   intent). `np.diag(M).copy()` keeps neighbourhood degrees uncorrupted when `M`
   is updated in place.
 - Random seeds are fixed (`314`), matching the reference.
+
+## The 0/1 support: why `adj = (sim_mat > 0.0)` (paper-silent, from the reference)
+
+The paper never specifies how the weighted similarity matrix becomes the graph
+Alon's algorithm operates on: §3.4 says "we calculate the pairwise similarity
+matrix `W`, obtaining the original graph `G`" — i.e., the similarity matrix *is*
+the (edge-weighted) graph, and no threshold is ever named. The 0/1 matrix used
+by the regularity tests is the **support** of `W`:
+
+```
+adj_mat = (sim_mat > 0.0).astype(float)
+```
+
+This is inherited verbatim from Fiorucci et al.'s `dense_graph_reducer` (the
+code the paper adopts for the greedy certificates; `(sim_mat > 0.0)` is a real
+filter there because their inputs — 0/1 block matrices, image-similarity graphs —
+have genuine sparsity). Sperotto–Pelillo [16] justify running the partitioning
+on the support: "the algorithms are not influenced by edge-weights" — the
+weights are consumed only by the reduced graph (Eq. 3).
+
+**Degeneracy on dense similarities (documented, inherited, not a bug):** the
+Gaussian kernel `exp(−d/(d̄σ))` is strictly positive, so the support of every
+paper dataset is the **complete graph**. Consequences:
+
+- `degrees = argsort(adj_mat.sum(0))` and the refinement's `s_r_degs` are all
+  equal → the "degree-based" initialization/refinement ordering degenerates to
+  vertex-index tie-breaking (deterministic but content-free).
+- Certificates are all-or-nothing: `find_r_cert_and_compl` returns *all* of
+  `Vr` (the complete-support "neighbourhood" of `y0`), so splits are driven by
+  certificate sizes, not degree structure.
+- The pipeline still works because the informative signal rides the **weighted**
+  quantities: alon1's weighted average degree, the weighted residual in
+  Frieze–Kannan, and above all the Eq. 3 weighted reduced graph `R`, from which
+  the structure is recovered by clustering. The degenerate ordering only
+  permutes vertices within balanced classes.
+
+**The alternative the lineage specifies but the reference does not implement:**
+Sperotto–Pelillo [16] Eq. 15 order elements by the *average weighted degree*
+`awdeg_S(i) = (1/|S|) Σ_{j∈S} ω(i,j)` — this stays informative on dense
+similarities. Fiorucci's code instead sorts by the 0/1 degree, which the repo
+reproduces for fidelity. Any other adjacency threshold (kNN, `w > τ`) is a
+paper-silent preprocessing choice and is **not** used; `drop_edges_between_irregular_pairs`
+and `density_threshold` prune only the reduced graph, never the partition input.

@@ -21,10 +21,10 @@ Reproduction searches **only** these values.
 
 | Experiment | Search | How a number is reported |
 |------------|--------|--------------------------|
-| Exp 1 (Figs. 2–5) | full `ε × ϵ × b × σ` | **mean** NMI/time over the other two partitioning parameters (and σ) |
+| Exp 1 (Figs. 2–5) | full `ε × ϵ × b × σ` × stop rule × `d₀` | **mean** NMI/time over the other parameters (σ, stop rule, `d₀`) |
 | Exp 1 (Fig. 6) | same runs | mean over **all** tested `(ε,ϵ,b)` vs mean over **selected** ranges |
-| Exp 2 (Figs. 7–10) | original: best `σ`; enhanced: best NMI over selected `(ε,ϵ,b) × σ` | one original vs one enhanced per dataset/algorithm |
-| Exp 2b (Fig. 11) | `σ` grid at the single recommended point `(ε, b, ϵ) = (0.15, 4, 0.05)` | regularity vs k-means at the same `k` |
+| Exp 2 (Figs. 7–10) | original: best `σ`; enhanced: best NMI over selected `(ε,ϵ,b) × σ` × stop rule × `d₀` | one original vs one enhanced per dataset/algorithm |
+| Exp 2b (Fig. 11) | `σ` grid at the single recommended point `(ε, b, ϵ) = (0.15, 4, 0.05)`; `d₀ = 0` fixed (ablation) | regularity vs k-means at the same `k` |
 | Exp 3 (Tables 2–5) | same enhanced search as Exp 2 | best-NMI Reg-* joined to the paper's 8 recent-algorithm columns |
 
 ## Evaluation protocol (§4.1)
@@ -48,6 +48,10 @@ show the influence of the third. Example: for `ε = 0.1`, average NMI over all
 
 ## Not searched (paper-silent defaults)
 
-The paper does not name APC preference, DSet weight cutoff, or reduced-graph `d₀`.
-Reproduction **does not** grid-search them: APC uses the Frey–Dueck median,
-DSet uses `1/(1.5 n)`, `d₀ = 0` (every Eq. 3 weight kept).
+The paper does not name APC preference, DSet weight cutoff, or the reduced-graph
+adjacency threshold `d₀`'s value. Reproduction does **not** grid-search APC
+preference or DSet cutoff (APC uses the Frey–Dueck median, DSet uses
+`1/(1.5 n)`). `d₀` **is** searched in Exp 1/2/3 as a documented paper-silent
+extension (`config.D0_GRID`, which includes 0 = the pure-paper setting of keeping
+every Eq. 3 weight); Exp 2b fixes `d₀ = 0` because the ablation must hold every
+other part fixed.

@@ -49,6 +49,12 @@ APC_PREFERENCE_QUANTILE = 50
 DSET_WEIGHT_THRESHOLD = None
 DENSITY_THRESHOLD = 0
 
+# paper §3.3 / lemma 2: reduced-graph adjacency threshold d₀. the paper names
+# the threshold but never its value (and lemma 2 requires d₀ > ε). searched in
+# exp 1/2/3 as a paper-silent extension; 0 = keep every eq. 3 weight (the
+# setting used before the search and the pure-paper reading of the pipeline).
+D0_GRID = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5)
+
 # paper §2: four representative algorithms
 BASE_ALGORITHMS = ("SPC", "APC", "DSet", "SPRG")
 

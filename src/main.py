@@ -38,6 +38,11 @@ def _split(arg):
     return [s.strip() for s in arg.split(",") if s.strip()]
 
 
+def stop_rules_for(args):
+    # partition-loop stop rule(s): both Algorithm 1 line 12 and the §3.2 Step 3 rule
+    return ("algorithm1", "theoretical") if args.stop_rule == "both" else (args.stop_rule,)
+
+
 def run_smoke(args):
     # no network, synthetic blobs
     from .smoke_test import main as _smoke_main
@@ -49,6 +54,7 @@ def run_exp1(args):
     df = experiment1_parameter_influence(
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
+        stop_rules=stop_rules_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -63,6 +69,7 @@ def run_exp2(args):
     df = experiment2_enhanced_vs_original(
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
+        stop_rules=stop_rules_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -75,6 +82,7 @@ def run_exp2b(args):
     df = experiment2b_regularity_vs_kmeans(
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
+        stop_rules=stop_rules_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -86,6 +94,7 @@ def run_exp3(args):
     # paper §4.3 tables 2–5
     tables = experiment3_vs_recent(
         dataset_names=_split(args.datasets) if args.datasets else None,
+        stop_rules=stop_rules_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -113,9 +122,16 @@ def main(argv=None):
     p.add_argument("command", choices=["smoke", "exp1", "exp2", "exp2b", "exp3", "all"])
     p.add_argument("--datasets", default=None, help="comma-separated dataset names")
     p.add_argument("--algorithms", default=None, help="comma-separated algorithm names")
+    p.add_argument("--stop-rule", choices=["both", "algorithm1", "theoretical"],
+                   default="both",
+                   help="partition-loop stop rule(s): 'algorithm1' = Algorithm 1 "
+                        "line 12 (n_ir < k(k−1)/2), 'theoretical' = §3.2 Step 3 "
+                        "(n_ir ≤ ε·C(k,2)); 'both' (default) runs and records each")
     p.add_argument("--out", default="results", help="output directory")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args(argv)
+
+    stop_rules = ("algorithm1", "theoretical") if args.stop_rule == "both" else (args.stop_rule,)
 
     if args.command == "smoke":
         run_smoke(args)

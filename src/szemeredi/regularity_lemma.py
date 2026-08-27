@@ -84,7 +84,9 @@ class SzemerediRegularityLemma:
         # keep the similarity matrix only when using eq. 3
         if is_weighted:
             self.sim_mat = sim_mat
-        # 0/1 support of the original graph g
+        # 0/1 support of the original graph g (see spec/regularity_partitioning.md:
+        # paper-silent, inherited from fiorucci's dense_graph_reducer; on dense
+        # gaussian similarities this support is the complete graph)
         self.adj_mat = (sim_mat > 0.0).astype(float)
         # paper ε (regular-pair parameter, def. 1)
         self.epsilon = epsilon

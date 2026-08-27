@@ -42,7 +42,12 @@ def exp1_frames():
     if not parts:
         return None
     df = pd.concat([pd.read_csv(p) for p in parts], ignore_index=True)
-    df = df.drop_duplicates(subset=["dataset", "algo", "sigma", "epsilon", "compression", "b"])
+    cols = ["dataset", "algo", "sigma", "epsilon", "compression", "b"]
+    if "stop_rule" in df.columns:
+        cols.append("stop_rule")
+    if "d0" in df.columns:
+        cols.append("d0")
+    df = df.drop_duplicates(subset=cols)
     return df
 
 
