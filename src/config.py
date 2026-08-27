@@ -45,9 +45,22 @@ EXP2B_COMPRESSION = 0.05
 
 # paper-silent defaults used by the base algorithms (not searched):
 # apc: frey–dueck median preference; dset: 1/(1.5 n); d₀: keep every eq. 3 weight.
+# these are read by runners.make_base_algorithm — change them here, not there.
 APC_PREFERENCE_QUANTILE = 50
 DSET_WEIGHT_THRESHOLD = None
 DENSITY_THRESHOLD = 0
+
+# how "degree" is read when ordering vertices for initialization / refinement.
+# "support"  = fiorucci et al. [28] reference code: 0/1 degree of (sim_mat > 0).
+#              on the paper's dense gaussian similarities that support is the
+#              COMPLETE graph, so every degree is equal and the ordering
+#              degenerates to vertex index order — the partition then ignores
+#              the graph entirely (see spec/regularity_partitioning.md).
+# "weighted" = sperotto & pelillo [16] eq. 15 average weighted degree
+#              awdeg_S(i) = (1/|S|) Σ_{j∈S} w(i,j), listed in decreasing order,
+#              which stays informative on dense similarities.
+DEGREE_MODES = ("support", "weighted")
+DEGREE_MODE = "support"
 
 # paper §3.3 / lemma 2: reduced-graph adjacency threshold d₀. the paper names
 # the threshold but never its value (and lemma 2 requires d₀ > ε). searched in

@@ -3,6 +3,19 @@
 vanilla alon step 4 yields 1 + k·4^k classes. the paper limits each class to
 at most one irregular partner so the split is constant-factor (k roughly doubles).
 degree-based certificates: fiorucci et al. [28] (modification 2).
+
+two realizations, selected by ``degree_mode`` (see spec/regularity_partitioning.md):
+
+- ``degree_based``  — the fiorucci [28] reference mechanics: keep the larger of
+  (certificate, complement), dump the smaller side into v0, trim by 0/1 degree,
+  then re-chunk v0. degenerate on dense similarities (the 0/1 support is the
+  complete graph, so every degree is equal and the split falls back to vertex
+  index order).
+- ``awdeg_based``   — sperotto & pelillo [16] eq. 15: order each class by the
+  average weighted degree awdeg_S(i) = (1/|S|) Σ_{j∈S} w(i,j), decreasing, and
+  "subdivide the ordered sequence of elements into the desired number of
+  subsets" (here 2, per modification 1). the tail — the least connected
+  vertices — joins v0.
 """
 
 import random
@@ -102,4 +115,62 @@ def degree_based(self):
             "V0 exceeded the epsilon*n bound (not enough nodes in C0 to create "
             "a new class). Try to increase epsilon or decrease the number of "
             "nodes in the graph"
+        )
+
+
+def _awdeg_order(sim_mat, members):
+    """[16] eq. 15: members sorted by intra-set average weighted degree, decreasing."""
+    # awdeg_S(i) = (1/|S|) Σ_{j∈S} w(i,j); the 1/|S| factor is constant here
+    awdeg = sim_mat[np.ix_(members, members)].mean(1)
+    # decreasing: "only the less connected vertices join the exceptional set"
+    return members[np.argsort(-awdeg)]
+
+
+def awdeg_based(self):
+    """paper §3.2 step 4 realized with [16] eq. 15 (see module docstring).
+
+    every class is subdivided into 2 subsets of ⌊c/2⌋ along its awdeg-ordered
+    sequence (modification 1's "constant number of subclasses"); the tail joins
+    v0, and v0 is re-chunked the same way so the partition stays equitable.
+    """
+    sim_mat = self.sim_mat if self.is_weighted else self.adj_mat
+    k_old = self.k
+    # modification 1: a constant number of subclasses — here 2
+    c_new = self.classes_cardinality // 2
+    if c_new < 1:
+        raise RuntimeError(
+            "class cardinality collapsed below 2; decrease the compression rate"
+        )
+
+    new_classes = np.zeros_like(self.classes)
+    label = 0
+    for s in range(1, k_old + 1):
+        members = np.where(self.classes == s)[0]
+        if members.size == 0:
+            continue
+        order = _awdeg_order(sim_mat, members)
+        # "subdividing the ordered sequence of elements into the desired number
+        # of subsets"; the remainder is the least connected tail → v0
+        for half in (order[:c_new], order[c_new:2 * c_new]):
+            if half.size == c_new:
+                label += 1
+                new_classes[half] = label
+
+    # leftovers (including the initial v0) re-chunked by awdeg, decreasing
+    v0 = np.where(new_classes == 0)[0]
+    if v0.size >= c_new:
+        order = _awdeg_order(sim_mat, v0)
+        for i in range(order.size // c_new):
+            label += 1
+            new_classes[order[i * c_new:(i + 1) * c_new]] = label
+
+    self.classes = new_classes
+    self.k = label
+    self.classes_cardinality = c_new
+
+    if int(np.sum(new_classes == 0)) > self.epsilon * self.N:
+        # paper def. 2: a regular partition needs |v0| < ε|v|
+        raise RuntimeError(
+            "V0 exceeded the epsilon*n bound. Try to increase epsilon or "
+            "decrease the number of nodes in the graph"
         )

@@ -75,7 +75,6 @@ def kmeans_partition_clustering(
     """
     # features for vertex sampling
     X = np.asarray(X, dtype=float)
-    n = X.shape[0]
 
     # start partition timer
     t0 = time.time()

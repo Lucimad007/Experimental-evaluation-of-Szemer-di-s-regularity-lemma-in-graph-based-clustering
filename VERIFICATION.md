@@ -14,6 +14,39 @@ is implemented here faithfully and that its claims hold on our runs:
    on the datasets we could run, and the paper's causal claim (regularity
    partitioning *enhances* clustering) is demonstrated by its own ablation.
 
+> ## ⚠ 2026-08-27 — every empirical claim below is INVALID under `degree_mode="support"`
+>
+> A permutation test showed the default partitioner never reads the graph. Because
+> `adj_mat = (sim_mat > 0.0)` is the complete graph on a Gaussian kernel, `alon2`
+> certifies every pair irregular with the whole class as certificate, `alon3` never
+> runs, `n_ir` is always `C(k,2)`, and the class split degenerates to **vertex index
+> order**. UCI files are sorted by class label, so the classes came out class-pure
+> for free.
+>
+> Permuting the rows of `X` leaves the similarity graph unchanged up to relabelling,
+> yet (best NMI over the paper's own σ × ε × ϵ × b grid):
+>
+> | dataset | algo | original | enhanced, file order | enhanced, rows permuted |
+> |---|---|---|---|---|
+> | Ecoli | SPC  | 0.441 | 0.799 | 0.095 |
+> | Ecoli | APC  | 0.500 | 0.844 | 0.103 |
+> | Ecoli | DSet | 0.514 | 0.751 | 0.109 |
+> | Seeds | SPC  | 0.512 | 0.764 | 0.052 |
+> | Seeds | APC  | 0.446 | 0.867 | 0.084 |
+> | Seeds | DSet | 0.472 | 0.820 | 0.075 |
+> | Wine  | SPC  | 0.428 | 0.577 | 0.064 |
+> | Wine  | APC  | 0.314 | 0.728 | 0.072 |
+> | Wine  | DSet | 0.339 | 0.644 | 0.063 |
+>
+> So section 2 below ("the paper's claims hold on our runs") measured row order, not
+> the regularity lemma. The fidelity table in section 1 is unaffected — the code does
+> match the paper's text; the text's procedure is what collapses on dense graphs.
+>
+> `degree_mode="weighted"` (Sperotto & Pelillo [16] Eq. 15) is exactly
+> permutation-invariant and is now searched alongside `"support"`. Re-running every
+> experiment under it is required before any empirical claim here is restored.
+> Mechanism, quotes and the acceptance test: `spec/regularity_partitioning.md`.
+
 The complete line-by-line audit with code excerpts is in
 [`IMPLEMENTATION_PROOF.md`](IMPLEMENTATION_PROOF.md); per-topic executable
 proofs live in [`proof/`](proof/) (start with

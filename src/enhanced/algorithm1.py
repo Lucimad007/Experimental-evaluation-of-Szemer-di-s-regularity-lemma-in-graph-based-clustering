@@ -75,6 +75,7 @@ def build_reduced_graph(
     drop_edges_between_irregular_pairs=False,  # false = alg 1 all pairs; true = lemma 2
     density_threshold=0,  # paper d₀ (unnamed). 0 = keep every eq. 3 weight
     stop_rule="algorithm1",
+    degree_mode="support",  # "support" = fiorucci [28]; "weighted" = [16] eq. 15
     verbose=False,
 ):
     """algorithm 1 lines 1–18: regularity partition + reduced graph r.
@@ -97,6 +98,7 @@ def build_reduced_graph(
         random_refinement=random_refinement,
         drop_edges_between_irregular_pairs=drop_edges_between_irregular_pairs,
         density_threshold=density_threshold,
+        degree_mode=degree_mode,
     )
     # algorithm 1 lines 1–17 then line 18
     alg.run(b=b, compression_rate=compression_rate, verbose=verbose, stop_rule=stop_rule)
@@ -112,6 +114,7 @@ def build_reduced_graph(
         # paper |v0|; these points are not vertices of r
         "v0_size": int(np.sum(alg.classes == 0)),
         "index_vec": list(alg.index_vec),
+        "degree_mode": degree_mode,
     }
     return alg.reduced_sim_mat, alg.classes.astype(int), info
 
@@ -148,6 +151,7 @@ def enhance_clustering(
     drop_edges_between_irregular_pairs=False,  # false = alg 1 eq. 3; true = lemma 2
     density_threshold=0,  # paper d₀; 0 = unnamed / keep all
     stop_rule="algorithm1",
+    degree_mode="support",  # "support" = fiorucci [28]; "weighted" = [16] eq. 15
     verbose=False,
 ):
     """run algorithm 1 to enhance ``base_algorithm`` on ``sim_mat``.
@@ -175,6 +179,13 @@ def enhance_clustering(
     stop_rule : str
         partition-loop stopping rule: ``"algorithm1"`` (default, algorithm 1
         line 12) or ``"theoretical"`` (§3.2 step 3).
+    degree_mode : str
+        how "degree" is read when ordering vertices. ``"support"`` (default)
+        is the fiorucci [28] reference behaviour: 0/1 degree on the support
+        ``sim_mat > 0``, which on a dense gaussian similarity is the complete
+        graph, so the ordering degenerates to vertex index order.
+        ``"weighted"`` is sperotto & pelillo [16] eq. 15, the average weighted
+        degree, which stays informative on dense similarities.
 
     returns
     -------
@@ -197,6 +208,7 @@ def enhance_clustering(
         drop_edges_between_irregular_pairs=drop_edges_between_irregular_pairs,
         density_threshold=density_threshold,
         stop_rule=stop_rule,
+        degree_mode=degree_mode,
         verbose=verbose,
     )
     # |r|

@@ -107,26 +107,87 @@ have genuine sparsity). Sperotto–Pelillo [16] justify running the partitioning
 on the support: "the algorithms are not influenced by edge-weights" — the
 weights are consumed only by the reduced graph (Eq. 3).
 
-**Degeneracy on dense similarities (documented, inherited, not a bug):** the
-Gaussian kernel `exp(−d/(d̄σ))` is strictly positive, so the support of every
-paper dataset is the **complete graph**. Consequences:
+### Degeneracy on dense similarities — MEASURED, and it is fatal
 
-- `degrees = argsort(adj_mat.sum(0))` and the refinement's `s_r_degs` are all
-  equal → the "degree-based" initialization/refinement ordering degenerates to
-  vertex-index tie-breaking (deterministic but content-free).
-- Certificates are all-or-nothing: `find_r_cert_and_compl` returns *all* of
-  `Vr` (the complete-support "neighbourhood" of `y0`), so splits are driven by
-  certificate sizes, not degree structure.
-- The pipeline still works because the informative signal rides the **weighted**
-  quantities: alon1's weighted average degree, the weighted residual in
-  Frieze–Kannan, and above all the Eq. 3 weighted reduced graph `R`, from which
-  the structure is recovered by clustering. The degenerate ordering only
-  permutes vertices within balanced classes.
+The Gaussian kernel `exp(−d/(d̄σ))` is strictly positive, so the support of every
+paper dataset is the **complete graph** (measured on Ecoli: off-diagonal support
+density `1.000000`, every degree exactly `335`). The consequences are not
+cosmetic — they disable the partitioner completely:
 
-**The alternative the lineage specifies but the reference does not implement:**
-Sperotto–Pelillo [16] Eq. 15 order elements by the *average weighted degree*
-`awdeg_S(i) = (1/|S|) Σ_{j∈S} ω(i,j)` — this stays informative on dense
-similarities. Fiorucci's code instead sorts by the 0/1 degree, which the repo
-reproduces for fidelity. Any other adjacency threshold (kNN, `w > τ`) is a
-paper-silent preprocessing choice and is **not** used; `drop_edges_between_irregular_pairs`
-and `density_threshold` prune only the reduced graph, never the partition input.
+1. `classes_vertices_degrees()` returns the **unweighted** degree (constant, = class
+   size `n`), while `bip_avg_deg` is the **weighted** mean degree `n·d̄w`. `alon2`
+   compares the two, so every vertex "deviates" by `n(1−d̄w)` against a threshold
+   of `ε⁴n`. On Ecoli that is `41.4` against `0.0425`.
+2. Therefore **`alon2` certifies every pair irregular**, with certificate = the
+   whole class and empty complement. Measured across 3 datasets × 6 σ values,
+   every pair was decided by `alon1` or `alon2` and **`alon3` never executed** —
+   so the paper's modification 2 (Fiorucci's degree-based greedy certificate) is
+   dead code.
+3. `n_ir` is therefore always `C(k,2)`, so **neither stop rule ever fires** and the
+   loop always exits on the `ϵ` compression guard. This makes the Algorithm 1
+   line 12 vs §3.2 Step 3 question (the suspected typo) moot.
+4. In refinement, `greater_set` is the whole class and `s_r_degs` are all equal, so
+   the "sort by degree" is a stable sort on constant keys: the class is cut into
+   "first half by vertex index". The `V0` re-chunk sorts by `argsort` of a constant
+   vector, which is again index order.
+5. Net effect: **the partition is a deterministic chunking of the vertex index
+   order and never reads the graph.** Real UCI files are sorted by class label, so
+   the classes come out class-pure for free.
+
+**Acceptance test.** A graph algorithm must be invariant to vertex relabelling.
+Permuting the rows of `X` (which leaves the similarity graph unchanged up to
+relabelling) collapses the result under `degree_mode="support"`:
+
+| dataset | algo | original | enhanced, file order | enhanced, rows permuted |
+|---------|------|----------|----------------------|-------------------------|
+| Ecoli | SPC  | 0.441 | 0.799 | 0.095 |
+| Ecoli | APC  | 0.500 | 0.844 | 0.103 |
+| Ecoli | DSet | 0.514 | 0.751 | 0.109 |
+| Seeds | APC  | 0.446 | 0.867 | 0.084 |
+| Wine  | APC  | 0.314 | 0.728 | 0.072 |
+
+(best NMI over σ × ε × ϵ × b, i.e. the paper's own protocol). Every reported gain
+is an artifact of row order. A second symptom: under `"support"` the parameter `b`
+has *no* effect on the result (identical NMI to six decimals for b = 2, 4, 8),
+so Exp 1's "influence of b" curve measures nothing.
+
+### `degree_mode`: the two readings
+
+`degree_mode` selects how "degree" is read when ordering vertices.
+
+- **`"support"`** (default, reference-faithful): the 0/1 degree of `sim_mat > 0`,
+  exactly as Fiorucci's `dense_graph_reducer` does. Correct on the sparse 0/1
+  graphs that code targets; degenerate here, as measured above. Kept so the
+  reference behaviour stays reproducible and comparable.
+- **`"weighted"`**: Sperotto & Pelillo [16] Eq. 15, the *average weighted degree*
+
+  ```
+  awdeg_S(i) = (1/|S|) Σ_{j∈S} ω(i,j),   S ⊆ V
+  ```
+
+  [16] p. 22: "All elements in the current subset S are listed in decreasing
+  order by average weighted degree. In so doing, the partition of S takes place
+  simply by subdividing the ordered sequence of elements into the desired number
+  of subsets. The decreasing order has been preferred because of the presence of
+  the exceptional set: in this way we assume that only the less connected
+  vertices join the exceptional set. Hence, the obtained regular partition
+  contains classes the elements of which can already be considered similar to
+  each other."
+
+  This is implemented by `refinement_step.awdeg_based`: each class is subdivided
+  into 2 subsets (modification 1's "constant number of subclasses") along its
+  awdeg-ordered sequence, and the least-connected tail joins `V0`. Note `awdeg`
+  is **intra-class** (`S` = the class being split), which is what makes classes
+  progressively homogeneous. This mode is exactly permutation-invariant (verified
+  to machine precision on 9 dataset × algorithm cases).
+
+Note that [16] also states "the algorithms are not influenced by edge-weights",
+which is what licenses running the Alon *conditions* on the support. That is
+harmless in `"weighted"` mode: the conditions still report every pair irregular,
+so the loop runs to the `ϵ` guard exactly as §4.1 describes ("terminating when
+the number of classes is greater than `ϵ|G|` in most cases"), and the refinement
+is driven by Eq. 15 rather than by certificates.
+
+Any other adjacency threshold (kNN, `w > τ`) is a paper-silent preprocessing
+choice and is **not** used; `drop_edges_between_irregular_pairs` and
+`density_threshold` prune only the reduced graph, never the partition input.

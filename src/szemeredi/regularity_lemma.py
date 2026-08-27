@@ -80,7 +80,7 @@ class SzemerediRegularityLemma:
     conditions = []
 
     def __init__(self, sim_mat, epsilon, is_weighted, drop_edges_between_irregular_pairs,
-                 density_threshold=0):
+                 density_threshold=0, degree_mode="support"):
         # keep the similarity matrix only when using eq. 3
         if is_weighted:
             self.sim_mat = sim_mat
@@ -92,8 +92,21 @@ class SzemerediRegularityLemma:
         self.epsilon = epsilon
         # |v| = n
         self.N = self.adj_mat.shape[0]
-        # vertices ordered by degree (used by degree-based init / refine)
-        self.degrees = np.argsort(self.adj_mat.sum(0))
+        # "support" = reference behaviour (0/1 degree, ascending);
+        # "weighted" = [16] eq. 15 average weighted degree, DECREASING, so that
+        # "only the less connected vertices join the exceptional set"
+        self.degree_mode = degree_mode
+        if degree_mode == "weighted":
+            if not is_weighted:
+                raise ValueError("degree_mode='weighted' requires is_weighted=True")
+            # [16] eq. 15 with S = V: awdeg_V(i) = (1/n) Σ_j w(i,j); the 1/n
+            # factor is a constant and does not change the ordering
+            self.degrees = np.argsort(-sim_mat.sum(0))
+        elif degree_mode == "support":
+            # vertices ordered by 0/1 degree (used by degree-based init / refine)
+            self.degrees = np.argsort(self.adj_mat.sum(0))
+        else:
+            raise ValueError(f"unknown degree_mode: {degree_mode}")
 
         # true → eq. 3 densities; false → eq. 2
         self.is_weighted = is_weighted

@@ -3,6 +3,40 @@
 Paste this whole file into an LLM to bring it up to speed on every questionable
 point in the reproduction. Keep this file updated as the codebase evolves.
 
+> ## RESOLVED, 2026-08-27 — read this first
+>
+> Item **A3** below was not a cosmetic degeneracy. It disabled the partitioner.
+> Because `adj_mat = (sim_mat > 0.0)` is the complete graph on a Gaussian kernel,
+> `alon2` certifies **every** pair irregular with the whole class as certificate,
+> `alon3` (the paper's modification 2) **never runs at all**, `n_ir` is always
+> `C(k,2)` so **neither stop rule ever fires** (settling A1/G1), and the class
+> split falls back to **vertex index order**. Since UCI files are sorted by class
+> label, the partition came out class-pure for free and every "enhancement"
+> number in `results/` was an artifact of row order:
+>
+> | dataset | algo | original | enhanced, file order | enhanced, rows permuted |
+> |---|---|---|---|---|
+> | Ecoli | SPC | 0.441 | 0.799 | 0.095 |
+> | Ecoli | APC | 0.500 | 0.844 | 0.103 |
+> | Seeds | APC | 0.446 | 0.867 | 0.084 |
+> | Wine  | APC | 0.314 | 0.728 | 0.072 |
+>
+> Fix: a `degree_mode` flag. `"support"` keeps the reference behaviour;
+> `"weighted"` implements Sperotto & Pelillo [16] Eq. 15 (average weighted
+> degree, decreasing) and is exactly permutation-invariant. Both are searched and
+> recorded by the experiments (`degree_mode` / `enh_degree_mode` columns).
+> Details and quotes: `spec/regularity_partitioning.md`.
+>
+> Open: `"weighted"` is honest but scores ~0.15–0.46 NMI at a single parameter
+> point, well below the paper's Reg-* values. Whether a variant exists that is
+> both permutation-invariant and reproduces Tables 2–5 is **unresolved** (G5).
+>
+> Circumstantial: in the paper's own Tables 2–5, all four Reg-* algorithms give
+> identical values on Seeds, Appendicitis, Rice and Banknote across all four
+> metrics (ACC = 1.00 on Rice/Raisin/Banknote). Four unrelated clustering
+> algorithms agreeing to two decimals is what you would expect if the labels come
+> from the partition rather than from the clustering step.
+
 ```
 CONTEXT: I am working on a Python reproduction of:
 
@@ -25,7 +59,10 @@ what the code does, and my open question.
 A. ALGORITHM / PSEUDOCODE AMBIGUITIES
 ════════════════════════════════════════════════════════════════════════
 
-A1. Algorithm 1 line 12 stop rule — TYPO SUSPECT.
+A1. Algorithm 1 line 12 stop rule — TYPO SUSPECT (MOOT in practice: n_ir is
+always C(k,2) because alon2 certifies every pair irregular, so neither rule
+ever fires and the loop always exits on the ϵ compression guard — which is
+exactly what §4.1 describes. Verified: both rules give byte-identical results).
 Paper Algorithm 1 line 12: "if n_ir < k_i(k_i − 1)/2 then Break" (NO ε factor,
 strict <). But §3.2 Step 3 of the same paper: "If at most ε(k_i choose 2)
 pairs are not verified as regular pairs, then P_i is a regular partition"
@@ -48,22 +85,22 @@ Algorithm 1 line 3: "while ϵ > k_i/n do". Code: float test `compression_rate
 greater than ϵ|G|" — three slightly different phrasings of the same guard.
 Q: Is the float test the right reading of "while ϵ > k_i/n"?
 
-A3. The 0/1 support construction — WHERE IS THE THRESHOLD?
+A3. The 0/1 support construction — RESOLVED, WAS FATAL (see banner at top).
 Paper §3.4: "we calculate the pairwise similarity matrix W, obtaining the
 original graph G" — NO threshold ever defined. Code (inherited verbatim from
 Fiorucci's dense_graph_reducer): `adj_mat = (sim_mat > 0.0).astype(float)`.
-Q: Did the paper use this support? Since the Gaussian kernel
-exp(−d/(d̄·σ)) is strictly positive, the support is the COMPLETE graph —
-so the "degree-based" initialization/refinement (sorting by 0/1 degree) is
-degenerate (tie-broken by vertex index), and certificates are all-or-nothing
-(e.g. find_r_cert_and_compl returns ALL of Vr). The pipeline still works
-because the weighted quantities carry the signal (weighted avg degree in
-alon1, weighted residual in Frieze–Kannan, Eq. 3 reduced graph). The lineage
-[16] actually specifies ordering by AVERAGE WEIGHTED degree (Eq. 15:
-awdeg_S(i) = (1/|S|)Σω(i,j)) which would remain informative — but the
-reference code implements the 0/1 variant.
-Q1: Is (S > 0) the right support? Should it be kNN or a threshold?
-Q2: Should the ordering be the [16] weighted-degree instead of 0/1 degree?
+The Gaussian kernel is strictly positive, so this support is the COMPLETE
+graph. Measured consequences: alon2 fires on every pair (it compares an
+UNWEIGHTED degree against a WEIGHTED mean degree), alon3 never runs, n_ir is
+always C(k,2), and the split degenerates to vertex index order — which is why
+the enhanced numbers tracked the class-sorted row order of UCI files rather
+than the graph. Answer to Q2: YES, the ordering must be [16] Eq. 15's average
+weighted degree; that is now `degree_mode="weighted"` and it is exactly
+permutation-invariant. Q1 (kNN / w > tau) remains unused: it is a paper-silent
+preprocessing choice we decline to invent.
+Still open: alon2's row/col mix-up (it derives the deviation mask from V_r's
+degrees, then applies it to index_map[1] = V_s) is inherited from the
+reference and NOT yet fixed — harmless while all degrees are equal.
 
 A4. Refinement (Step 4) mechanics — NOT IN ANY PAPER TEXT.
 Paper only says: "divide current classes to obtain a new partition P′ with

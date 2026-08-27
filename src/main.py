@@ -16,20 +16,14 @@ options:
 """
 
 import argparse
-import sys
 
 from . import config
-from .datasets import load_dataset
-from .enhanced import enhance_clustering
-from .enhanced.similarity import gaussian_similarity
 from .experiments import (
     experiment1_parameter_influence,
     experiment2_enhanced_vs_original,
     experiment2b_regularity_vs_kmeans,
     experiment3_vs_recent,
 )
-from .metrics import evaluate
-from .runners import make_base_algorithm
 from . import plotting
 
 
@@ -41,6 +35,11 @@ def _split(arg):
 def stop_rules_for(args):
     # partition-loop stop rule(s): both Algorithm 1 line 12 and the §3.2 Step 3 rule
     return ("algorithm1", "theoretical") if args.stop_rule == "both" else (args.stop_rule,)
+
+
+def degree_modes_for(args):
+    # "support" = fiorucci [28] 0/1 degree; "weighted" = [16] eq. 15 awdeg
+    return config.DEGREE_MODES if args.degree_mode == "both" else (args.degree_mode,)
 
 
 def run_smoke(args):
@@ -55,6 +54,7 @@ def run_exp1(args):
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
         stop_rules=stop_rules_for(args),
+        degree_modes=degree_modes_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -70,6 +70,7 @@ def run_exp2(args):
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
         stop_rules=stop_rules_for(args),
+        degree_modes=degree_modes_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -83,6 +84,7 @@ def run_exp2b(args):
         dataset_names=_split(args.datasets) if args.datasets else None,
         algorithms=_split(args.algorithms) if args.algorithms else None,
         stop_rules=stop_rules_for(args),
+        degree_modes=degree_modes_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -95,6 +97,7 @@ def run_exp3(args):
     tables = experiment3_vs_recent(
         dataset_names=_split(args.datasets) if args.datasets else None,
         stop_rules=stop_rules_for(args),
+        degree_modes=degree_modes_for(args),
         out_dir=args.out,
         verbose=args.verbose,
     )
@@ -127,11 +130,16 @@ def main(argv=None):
                    help="partition-loop stop rule(s): 'algorithm1' = Algorithm 1 "
                         "line 12 (n_ir < k(k−1)/2), 'theoretical' = §3.2 Step 3 "
                         "(n_ir ≤ ε·C(k,2)); 'both' (default) runs and records each")
+    p.add_argument("--degree-mode", choices=["both", "support", "weighted"],
+                   default="both",
+                   help="vertex ordering: 'support' = Fiorucci [28] 0/1 degree of "
+                        "(sim > 0), which is the complete graph on Gaussian "
+                        "similarities and therefore degenerates to index order; "
+                        "'weighted' = Sperotto & Pelillo [16] Eq. 15 average "
+                        "weighted degree; 'both' (default) runs and records each")
     p.add_argument("--out", default="results", help="output directory")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args(argv)
-
-    stop_rules = ("algorithm1", "theoretical") if args.stop_rule == "both" else (args.stop_rule,)
 
     if args.command == "smoke":
         run_smoke(args)

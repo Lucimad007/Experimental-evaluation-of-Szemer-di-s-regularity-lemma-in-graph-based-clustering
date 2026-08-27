@@ -10,11 +10,13 @@ see ``spec/base_algorithms.md``. hou et al., pr 171 (2026) §2 and alg 1 line 19
 # arrays (dset wants a dense float graph)
 import numpy as np
 
+# paper-silent defaults live in config, not inline
+from . import config
 # the four paper algorithms
 from .clustering import apc, dominant_sets, forest_affinity, spc, sprg, sprg_on_graph
 
 
-def make_base_algorithm(name, X=None, preference_quantile=50, weight_threshold=None):
+def make_base_algorithm(name, X=None, preference_quantile=None, weight_threshold=None):
     """return a callable ``f(sim_mat, n_clusters=none) -> labels`` for ``name``.
 
     this callable is the **base algorithm run on the reduced graph r** (a k×k
@@ -27,7 +29,13 @@ def make_base_algorithm(name, X=None, preference_quantile=50, weight_threshold=N
     ``preference_quantile`` is apc-only (frey–dueck shared preference as a
     percentile of positive similarities; 50 = median). ``weight_threshold`` is
     dset-only (``none`` → ``1/(1.5 n)``; ``"rel95"`` → 95% of max weight).
+    both default to the paper-silent values in ``config``.
     """
+    if preference_quantile is None:
+        preference_quantile = config.APC_PREFERENCE_QUANTILE
+    if weight_threshold is None:
+        weight_threshold = config.DSET_WEIGHT_THRESHOLD
+
     # paper §2.1
     if name == "SPC":
         return lambda sim_mat, n_clusters=None: spc(sim_mat, n_clusters)
