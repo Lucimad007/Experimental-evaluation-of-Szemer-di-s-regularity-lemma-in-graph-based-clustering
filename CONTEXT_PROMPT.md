@@ -59,10 +59,18 @@ what the code does, and my open question.
 A. ALGORITHM / PSEUDOCODE AMBIGUITIES
 ════════════════════════════════════════════════════════════════════════
 
-A1. Algorithm 1 line 12 stop rule — TYPO SUSPECT (MOOT in practice: n_ir is
-always C(k,2) because alon2 certifies every pair irregular, so neither rule
-ever fires and the loop always exits on the ϵ compression guard — which is
-exactly what §4.1 describes. Verified: both rules give byte-identical results).
+A1. Algorithm 1 line 12 stop rule — ANSWERED 2026-08-27: almost certainly a
+dropped ε. The authors' OWN earlier version [21] §3.1 step 3 prints
+"If at most ε(k_i choose 2) pairs are not verified as ε-regular"; so do [16]
+§3 step 3 and [28] §3 step 3. Only [17] differs, using εk². Every one of the
+four also contradicts itself by defining regularity with εk² while coding
+ε·C(k,2), so the definition/algorithm split is a lineage-wide habit, not a
+one-off. => `stop_rule="theoretical"` is the better-supported reading;
+`"algorithm1"` reproduces the newer paper as printed. Both are searched.
+MOOT in practice today: n_ir is always C(k,2) because alon2 certifies every
+pair irregular, so neither rule ever fires and the loop always exits on the ϵ
+compression guard — exactly what §4.1 describes. Verified: both rules give
+byte-identical results.
 Paper Algorithm 1 line 12: "if n_ir < k_i(k_i − 1)/2 then Break" (NO ε factor,
 strict <). But §3.2 Step 3 of the same paper: "If at most ε(k_i choose 2)
 pairs are not verified as regular pairs, then P_i is a regular partition"
@@ -102,6 +110,29 @@ Still open: alon2's row/col mix-up (it derives the deviation mask from V_r's
 degrees, then applies it to index_map[1] = V_s) is inherited from the
 reference and NOT yet fixed — harmless while all degrees are equal.
 
+A4b. HALVING and V0 — ANSWERED 2026-08-27 from the references.
+"Divide the classes into a constant number of subclasses" = 2 for the lineage
+this paper follows. [28] §4 always produces exactly 2 subclasses per class,
+"filled up to |C_i|/2" (stated twice), and exposes no l parameter — its
+Algorithm 1 signature is ApproxAlon(ε, c_min, G). [21] adopts [28] explicitly
+("the degree-based greedy method [5] is adopted"), so the constant is 2.
+By contrast [17] splits into l ∈ {3,4} with m = ⌊|V_i|/l⌋, and [16] into a
+user-defined number by slicing the awdeg-sorted sequence. So halving is right
+for our lineage. Our awdeg_based also halves. ✓
+V0 is NOT fixed, and the four papers disagree completely:
+  [16] V0 only ACCUMULATES (the low-degree tail of each class); no re-chunking,
+       no |V0| < εn check anywhere in the algorithm.
+  [17] claims "we recycle most of V0" but the algorithm text actually
+       re-chunks the leftovers INSIDE each V_s, not the old V0. Unresolved.
+  [28] is the ONLY one that moves vertices OUT of C0, and only conditionally:
+       Algorithm 2 line 14, "if |C0| > εn and |C0| > |P|" then "uniformly
+       distribute nodes of C0 between all the classes", else return irregular.
+       This is also the only explicit |V0| vs εn test in any of them.
+  [21] SILENT on V0 recycling; V0 is excluded from R and its members go to the
+       nearest cluster at the end.
+Our code re-chunks V0 unconditionally, which is closest to [28] but drops its
+two-part guard. Documented deviation.
+
 A4. Refinement (Step 4) mechanics — NOT IN ANY PAPER TEXT.
 Paper only says: "divide current classes to obtain a new partition P′ with
 1 + k_i·4^k_i classes, with a refinement algorithm, e.g., [30]" then
@@ -126,13 +157,20 @@ Q: Theoretically certificate splitting is what raises the Szemerédi index
 With the complete-support degeneracy, certificate sizes are all-or-nothing
 (hence splits are effectively balanced index-order) — does that matter?
 
-A6. Condition 2 constant: 1/8 vs 1/16.
-[16] and [28] TEXTS: "more than (1/8)ε⁴n vertices whose degrees deviate from
-d by at least ε⁴n". The reference CODE and this repo: `≥ (1/16)ε⁴n` in ONE
-direction (high side then low side). Resolution found: the theorem counts
-deviants in BOTH directions (1/8 total); by pigeonhole at least half deviate
-in one direction → 1/16 per direction is the operational form ([16] p.18
-spells this out). Verified equivalent, but flag for review.
+A6. Condition 2 constant: 1/8 vs 1/16 — NOT equivalent, corrected 2026-08-27.
+[16] p.17, [28] p.4 and [18] p.3 all print the TRIGGER as "more than (1/8)ε⁴n
+vertices whose degrees deviate from d by at least ε⁴n", counting BOTH
+directions. [16] p.18 then derives the CERTIFICATE: "if the number of deviating
+vertices is more than (ε⁴/8)n, then the degrees of at least half of them
+deviate in the same direction and if we let B′ be such a set of vertices and
+A′ = A we are done" — so 1/16 bounds the certificate, it is not the trigger.
+The reference code and this repo instead test `one_direction_count ≥
+(1/16)ε⁴n`, which is a DIFFERENT predicate, not an equivalent rewriting (e.g.
+0.06ε⁴n up + 0.06ε⁴n down fires neither, but a 0.07ε⁴n one-sided count fires
+the repo's test and not the theorem's). Moot while the support is complete
+(every vertex deviates), but wrong if the support is ever made sparse.
+Note also [28] and [18] omit [16]'s "A′ = A" sentence entirely; returning all
+of V_r on condition 2 follows [16] specifically.
 
 A7. d₀ (reduced-graph adjacency threshold) — NEVER VALUED, NOW SEARCHED.
 §3.3: "two vertices are adjacent if the corresponding classes are ε-regular
@@ -148,27 +186,56 @@ Q: Is searching d₀ a legitimate extension or a deviation? Should values
 below ε be excluded (Lemma 2 requires d₀ > ε)? Is the all-pairs reading
 acceptable?
 
-A8. V0 → nearest cluster — METRIC UNSPECIFIED.
+A8. V0 → nearest cluster — METRIC UNSPECIFIED IN ALL FOUR PAPERS (confirmed).
 Algorithm 1 lines 25–27: "Assign p to the nearest cluster". §3.4 calls it
 trivial and says V0 is small. Code: nearest = class with highest MEAN
-similarity to p (ties → lowest label). [16] used "a predefined distance
-measure" (unspecified).
-Q: Is mean-similarity the right metric?
+similarity to p (ties → lowest label).
+[16] p.23: "assign them to the closest cluster according to a predefined
+distance measure" — measure unspecified.
+[17] §7: "redistributed amongst the clusters using a k-nearest neighbor
+classifier" — k unspecified. This is the only concrete alternative on record.
+[21] §3.3: "each of them is simply assigned to the nearest cluster" — silent.
+None says whether "nearest" means nearest centroid, nearest member, or max
+average similarity, so our choice is free. Low impact (|V0| is small).
 
 ════════════════════════════════════════════════════════════════════════
 B. PAPER-SILENT CONSTANTS (all documented; APC/DSet/SPRG ones NOT searched)
 ════════════════════════════════════════════════════════════════════════
 
-B1. APC preference = median of POSITIVE off-diagonal similarities (Frey–Dueck
-suggest median; Gaussian sims are all positive, so this ≈ plain median).
-B2. DSet weight threshold = 1/(1.5·n) (Fiorucci lineage); alternatives known:
-DSLib [27] uses 1e-5, Hou et al. PR 2023 [25] uses 0.0001. The paper text
-just says "greater than a threshold".
-B3. DSet leftover cutoff = 5% of points (Fiorucci lineage); "rel" modes exist
-but unused.
-B4. SPRG: φ (min samples per node) = 5 (paper [20] picks φ by cross-validation),
-node-weighting variant "adpt" (ClustRF-Strct-Adpt, [20]'s best), bootstrap
-subsets, seed 314, Tclust=1000, mtry=√d (both from [20]).
+B1. APC preference = median of POSITIVE off-diagonal similarities. CONFIRMED
+[10] p.972: "The shared value could be the median of the input similarities
+(resulting in a moderate number of clusters) or their minimum". Also confirmed
+[10] p.972 that a general similarity (not −d²) is the intended input, so
+feeding the Gaussian matrix with affinity="precomputed" is legitimate.
+BUT: [10] p.973 terminates "when these decisions did not change for 10
+iterations"; we use convergence_iter=15 (sklearn's default). Damping 0.5 ✓.
+B2. DSet weight threshold = 1/(1.5·n) — MATCHES NO SOURCE (checked 2026-08-27).
+[27] DSLib code: "theta=1e-5", with "precision=1e-6; maxIters=1000".
+[25] Hou et al. PR 2023 — SAME FIRST AUTHOR as the paper being reproduced —
+states 0.0001 twice: "the data points with weights above a threshold (0.0001
+in this paper)". [9] and the main paper give no number. Since [25] shares an
+author with the paper, 0.0001 is the strongest available evidence for what
+Hou et al. actually run. Our 1/(1.5n) is n-dependent and lands ~1e-2..1e-3 on
+reduced graphs, i.e. 1–2 orders STRICTER than either. Also our tol=1e-5 vs
+DSLib's precision=1e-6. NOT changed yet — would alter every DSet result.
+B3. DSet leftover cutoff = 5% of points — NO textual basis. [27] and the main
+paper both say peel "until all the nodes are grouped"; [9] only offers a
+qualitative "stop when most of the data points have been classified". The 0%
+used by the "rel" modes is the one that matches the sources.
+B4. SPRG: Tclust=1000 and mtry=√d CONFIRMED verbatim [20] §4. But φ=5 is ours:
+[20] says "The value of φ is obtained through cross-validation on each
+dataset". The per-tree set is only "Xt ⊂ X drawn randomly" — our size-n
+bootstrap with replacement is an assumption ("⊂" arguably implies without).
+The pseudo two-class recipe is NEVER described in [20]; it cites Breiman
+(synthetic class from the product of marginals) and Liu–Xia–Yu (uniform in the
+bounding box) which differ — we follow Liu–Xia–Yu. And [20] §4 says it uses
+"a linear data separation as the split function", contradicting its own
+axis-aligned Eq. 1, which is what we implement.
+B4b. VERIFIED CORRECT in our SPRG: Eq. 7's denominator sums over the LONGER
+path with the leaf INCLUDED and the root EXCLUDED ([20]: "wκ is the weight
+assigned to the corresponding tree node (i.e. either sκ or ℓ) on the longer
+tree path. Note that the root node γ is not considered"); the Adpt leaf weight
+is 1/|Λ_b̂| (Eq. 13); Adpt is [20]'s best variant (Table 2, wins 3 of 4).
 B5. Reg-SPRG on the reduced graph R: R has no feature vectors, so the forest
 is grown on R's ROWS as k-dim profiles (φ=1). This is the repo's ONE
 documented adaptation; the paper doesn't specify how SPRG runs on R.

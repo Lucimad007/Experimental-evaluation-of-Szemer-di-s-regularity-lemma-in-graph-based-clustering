@@ -181,6 +181,20 @@ so Exp 1's "influence of b" curve measures nothing.
   progressively homogeneous. This mode is exactly permutation-invariant (verified
   to machine precision on 9 dataset × algorithm cases).
 
+  Two deliberate deviations from [16] in this mode, both documented rather than
+  accidental. First, [16] uses Eq. 15 in the **refinement only** — its Step 1 is
+  "Arbitrarily divide the set V into an equitable partition P1" — whereas we also
+  order the initial partition by `awdeg` over `S = V`, so that `b` selects
+  coherent seed classes instead of index blocks. Second, [16] lets `V0` only
+  accumulate, while we re-chunk it; that follows [28], whose Algorithm 2 line 15
+  redistributes `C0`, except that [28] guards the redistribution with
+  `|C0| > εn and |C0| > |P|` and we redistribute unconditionally.
+
+  The "constant number of subclasses" being **2** is not a guess: [28] §4 always
+  produces exactly two subclasses per class, "filled up to `|C_i|/2`", and [21]
+  (the authors' own earlier version) adopts [28]'s method by name. [17] is the
+  outlier, splitting into `l ∈ {3,4}` with `m = ⌊|V_i|/l⌋`.
+
 Note that [16] also states "the algorithms are not influenced by edge-weights",
 which is what licenses running the Alon *conditions* on the support. That is
 harmless in `"weighted"` mode: the conditions still report every pair irregular,
