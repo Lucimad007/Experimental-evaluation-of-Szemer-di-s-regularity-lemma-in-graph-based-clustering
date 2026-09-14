@@ -17,6 +17,37 @@ import numpy as np
 
 # bipartite pair objects (eq. 2 unweighted, eq. 3 weighted)
 from .classes_pair import ClassesPair, WeightedClassesPair
+from .refinement_step import _fiedler_order
+
+
+def unweighted_adjacency(sim_mat, adj_threshold="mean"):
+    """0/1 graph for alon [30] / def. 1. eq. 3 still uses the weighted ``sim_mat``.
+
+    ``adj_threshold``:
+    - ``0`` / ``"support"`` — ``sim > 0`` (fiorucci; complete on a gaussian kernel)
+    - ``"median"`` / ``"mean"`` / ``"p50"`` / … — cutoff from off-diagonal weights
+    - a float — keep edges with similarity strictly above that value
+    """
+    S = np.asarray(sim_mat, dtype=float)
+    n = S.shape[0]
+    off = S[~np.eye(n, dtype=bool)] if n else S.ravel()
+    if adj_threshold in (None, 0, 0.0, "0", "0.0", "support", "off"):
+        tau = 0.0
+    elif isinstance(adj_threshold, str):
+        key = adj_threshold.strip().lower()
+        if key in ("median", "med"):
+            tau = float(np.median(off)) if off.size else 0.0
+        elif key == "mean":
+            tau = float(off.mean()) if off.size else 0.0
+        elif key.startswith("p"):
+            tau = float(np.percentile(off, float(key[1:]))) if off.size else 0.0
+        else:
+            raise ValueError(f"unknown adj_threshold: {adj_threshold}")
+    else:
+        tau = float(adj_threshold)
+    A = (S > tau).astype(float)
+    np.fill_diagonal(A, 0.0)
+    return A
 
 
 def apply_density_threshold(R, density_threshold):
@@ -27,7 +58,7 @@ def apply_density_threshold(R, density_threshold):
     computed from off-diagonal eq. 3 entries of this r.
     """
     # paper-silent default: keep every eq. 3 weight
-    if density_threshold in (None, 0, 0.0, "0"):
+    if density_threshold in (None, 0, 0.0, "0", "0.0"):
         # return r unchanged
         return R
     # work on a float copy
@@ -80,21 +111,22 @@ class SzemerediRegularityLemma:
     conditions = []
 
     def __init__(self, sim_mat, epsilon, is_weighted, drop_edges_between_irregular_pairs,
-                 density_threshold=0, degree_mode="support"):
+                 density_threshold=0, degree_mode="weighted", adj_threshold="mean"):
         # keep the similarity matrix only when using eq. 3
         if is_weighted:
             self.sim_mat = sim_mat
-        # 0/1 support of the original graph g (see spec/regularity_partitioning.md:
-        # paper-silent, inherited from fiorucci's dense_graph_reducer; on dense
-        # gaussian similarities this support is the complete graph)
-        self.adj_mat = (sim_mat > 0.0).astype(float)
+        # 0/1 graph for alon [30] / def. 1. not the gaussian weights.
+        # eq. 3 consumes sim_mat only when building r.
+        self.adj_threshold = adj_threshold
+        self.adj_mat = unweighted_adjacency(sim_mat, adj_threshold)
         # paper ε (regular-pair parameter, def. 1)
         self.epsilon = epsilon
         # |v| = n
         self.N = self.adj_mat.shape[0]
-        # "support" = reference behaviour (0/1 degree, ascending);
         # "weighted" = [16] eq. 15 average weighted degree, DECREASING, so that
-        # "only the less connected vertices join the exceptional set"
+        # "only the less connected vertices join the exceptional set" (default:
+        # the gaussian kernel's support is k_n, so 0/1 degree is constant).
+        # "support" = fiorucci [28] 0/1 degree (ablation; degenerate on k_n).
         self.degree_mode = degree_mode
         if degree_mode == "weighted":
             if not is_weighted:
@@ -102,6 +134,13 @@ class SzemerediRegularityLemma:
             # [16] eq. 15 with S = V: awdeg_V(i) = (1/n) Σ_j w(i,j); the 1/n
             # factor is a constant and does not change the ordering
             self.degrees = np.argsort(-sim_mat.sum(0))
+        elif degree_mode == "spectral":
+            if not is_weighted:
+                raise ValueError("degree_mode='spectral' requires is_weighted=True")
+            self.degrees = _fiedler_order(sim_mat, np.arange(self.N))
+        elif degree_mode == "alon":
+            # alon packing inside an atom is arbitrary; keep a stable order
+            self.degrees = np.arange(self.N)
         elif degree_mode == "support":
             # vertices ordered by 0/1 degree (used by degree-based init / refine)
             self.degrees = np.argsort(self.adj_mat.sum(0))
@@ -135,6 +174,37 @@ class SzemerediRegularityLemma:
         # k at each iteration (debug)
         self.k_trace = []
 
+    def _complete_support(self):
+        """true iff g's 0/1 support is the complete graph k_n (no self-loops).
+
+        the paper's gaussian kernel is strictly positive, so this is the usual
+        case. every equitable pair is then ε-regular for any ε (def. 1 / fig. 1a),
+        and alon's witnesses are vacuous.
+        """
+        n = self.N
+        if n < 2:
+            return False
+        return float(self.adj_mat.sum()) >= n * (n - 1) - 1e-9
+
+    def _uses_alon(self):
+        return any(getattr(c, "__name__", "").startswith("alon") for c in self.conditions)
+
+    def _pair_for_regularity(self, r, s):
+        """alon [30] on the 0/1 support; frieze–kannan may see eq. 3 weights."""
+        if self._uses_alon() or not self.is_weighted:
+            return ClassesPair(self.adj_mat, self.classes, r, s, self.epsilon)
+        return WeightedClassesPair(
+            self.sim_mat, self.adj_mat, self.classes, r, s, self.epsilon
+        )
+
+    def _pair_for_reduced(self, r, s):
+        """algorithm 1 line 18 / eq. 3: reduced-graph weights from similarities."""
+        if self.is_weighted:
+            return WeightedClassesPair(
+                self.sim_mat, self.adj_mat, self.classes, r, s, self.epsilon
+            )
+        return ClassesPair(self.adj_mat, self.classes, r, s, self.epsilon)
+
     # ------------------------------------------------------------------ reduced
     def generate_reduced_sim_mat(self):
         """algorithm 1 line 18: reduced graph ``r ∈ r^{k×k}`` from ``v1..vk``.
@@ -157,12 +227,7 @@ class SzemerediRegularityLemma:
             )
             # fill each unordered pair (vr, vs)
             for s in s_iter:
-                # weighted pair → eq. 3
-                if self.is_weighted:
-                    cl_pair = WeightedClassesPair(self.sim_mat, self.adj_mat, self.classes, r, s, self.epsilon)
-                else:
-                    # unweighted pair → eq. 2
-                    cl_pair = ClassesPair(self.adj_mat, self.classes, r, s, self.epsilon)
+                cl_pair = self._pair_for_reduced(r, s)
                 # paper eq. (3) [or eq. (2) if unweighted]: edge weight of r between vr and vs
                 self.reduced_sim_mat[r - 1, s - 1] = cl_pair.bip_density
                 # r is undirected
@@ -201,18 +266,15 @@ class SzemerediRegularityLemma:
             self.regularity_list.append([])
             # s = 1 .. r-1
             for s in range(1, r):
-                # eq. 3 pair
-                if self.is_weighted:
-                    cl_pair = WeightedClassesPair(self.sim_mat, self.adj_mat, self.classes, r, s, self.epsilon)
-                else:
-                    # eq. 2 pair
-                    cl_pair = ClassesPair(self.adj_mat, self.classes, r, s, self.epsilon)
+                # alon: 0/1 support (def. 1). never the gaussian weights.
+                cl_pair = self._pair_for_regularity(r, s)
 
                 # whether any alon/frieze test produced an answer
                 is_verified = False
                 # whether that answer was "ε-regular" (empty cert)
                 verified_regular = False
-                # try alon 1, then 2, then 3 (first hit wins)
+                # alon1 (sparse-regular), then fiorucci [28] greedy cert (alon3),
+                # then alon2 only if [28] did not decide
                 for i, cond in enumerate(self.conditions):
                     is_verified, cert_pair, compl_pair = cond(self, cl_pair)
                     if is_verified:
@@ -251,13 +313,12 @@ class SzemerediRegularityLemma:
         # algorithm 1 line 11: return n_ir
         return n_ir
 
-    def check_partition_regularity(self, n_ir, stop_rule="algorithm1"):
+    def check_partition_regularity(self, n_ir, stop_rule="theoretical"):
         """§3.2 step 3, or algorithm 1 line 12.
 
-        ``"theoretical"`` is step 3 as written: stop when at most
-        ``ε · c(k, 2)`` pairs are not verified as regular.
-        ``"algorithm1"`` (default, the experimental pipeline) is line 12:
-        ``n_ir < k(k−1)/2``.
+        ``"theoretical"`` (default) is step 3, [16], [21], [28]: stop when at
+        most ``ε · c(k, 2)`` pairs are not verified as regular.
+        ``"algorithm1"`` is the printed line 12 (no ε; likely a dropped factor).
         """
         # total unordered pairs among v1..vk
         total_pairs = (self.k * (self.k - 1)) / 2.0
@@ -285,7 +346,7 @@ class SzemerediRegularityLemma:
 
     # --------------------------------------------------------------------- run
     def run(self, b=2, compression_rate=0.05, iteration_by_iteration=False, verbose=False,
-            stop_rule="algorithm1"):
+            stop_rule="theoretical"):
         """§3.2 steps 1–5 (with modifications 1–3), then §3.3 reduced graph r.
 
         parameters
@@ -297,8 +358,8 @@ class SzemerediRegularityLemma:
             loop is ``while ϵ > k_i / n``. values ``> 1`` are an absolute cap
             on ``k`` (not in the paper).
         stop_rule : str
-            step 3 (``"theoretical"``) or algorithm 1 line 12 (``"algorithm1"``,
-            default — what the experiments actually run).
+            step 3 (``"theoretical"``, default) or algorithm 1 line 12
+            (``"algorithm1"``).
         """
         # pin numpy rng for reproducible partitions
         np.random.seed(314)
@@ -346,18 +407,28 @@ class SzemerediRegularityLemma:
                 )
                 print("conditions verified = " + str(self.condition_verified))
 
-            # §3.2 step 3: if at most ε·c(k,2) (or algorithm 1 line 12) not-regular, stop
-            if self.check_partition_regularity(n_ir, stop_rule=stop_rule):
+            # §3.2 step 3 / line 12: stop when the partition is ε-regular.
+            # do not keep dummy-splitting on k_n: with alon refine, empty
+            # certificates just bisect by index/degree and destroy clusters.
+            regular = self.check_partition_regularity(n_ir, stop_rule=stop_rule)
+            if regular:
                 if verbose:
-                    print("The partition is regular (line 12): Break")
-                # algorithm 1 line 13: break
+                    print("The partition is regular: Break")
                 break
             if verbose:
                 print("The partition is irregular, proceed to refinement (line 15)")
             # step 4 + modification 1 (≤1 irregular partner). step 5 is the loop.
+            k_before = int(self.k)
             self.refinement_step(self)
-            # classes changed; last n_ir is stale
+            # classes changed even if k stayed the same; last n_ir is stale
             pairs_match_partition = False
+            # [28] alg 2 no longer mints classes from v0. if every pair is
+            # irregular, degree_based dumps half of v into v0 and the guard
+            # may put those vertices back, leaving k unchanged → stop.
+            if int(self.k) <= k_before:
+                if verbose:
+                    print("k did not increase after refinement: Break")
+                break
             if iteration_by_iteration:
                 input("Press Enter to continue...")
             if verbose:

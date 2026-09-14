@@ -59,7 +59,23 @@ string-label columns and header rows. Specifically:
   200 rows per digit 0–9 in file order.
 - **USPS** loads Roweis' `usps_all.mat` (11000 × 256, 1100 images per digit).
 
-### Fallback (2)
+## Preprocessing
+
+The paper does not specify any feature transform. Loaders return UCI values as
+distributed (`src/datasets.py`). Two documented views:
+
+| Mode | What it does | Role |
+|------|----------------|------|
+| `raw` | identity | paper cell |
+| `zscore` | drop zero-variance columns, drop exact duplicate columns, column z-score | ablation |
+
+EDA (`python -m src.main eda`) profiles missingness, constants, duplicates, and
+scale imbalance. Nothing else is dropped (Ecoli lip/chg stay; duplicate rows
+stay so NP matches Table 1). No engineered features.
+
+`python -m src.main preprocess` reruns the Exp 2 protocol on both views.
+
+## Fallback (2)
 
 Appendicitis, SCC via `ucimlrepo` (id 544 / 840) if installed; without network
 these degrade to a synthetic stand-in so the code still runs.

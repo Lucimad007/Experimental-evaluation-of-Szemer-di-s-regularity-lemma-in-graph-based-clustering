@@ -6,6 +6,9 @@ modification 2 uses fiorucci et al. [28] for the greedy certificate (alon 3).
 
 each cond(self, cl_pair) → (is_verified, cert_pair, compl_pair).
 irregular ⇔ cert_pair[0] is non-empty.
+
+hou modification 2 uses fiorucci [28] for the certificate (alon3). the
+builder therefore runs alon1, then alon3, then alon2 as a [30] fallback.
 """
 
 import math
@@ -23,37 +26,35 @@ def alon1(self, cl_pair):
 
 
 def alon2(self, cl_pair):
-    """alon 2: irregular if ≥ (1/16)ε⁴·n vertices deviate by > ε⁴·n."""
-    certs = [[], []]
-    compls = [[], []]
-    # degrees of vs into vr
-    s_vertices_degrees = cl_pair.classes_vertices_degrees()[1, :]
+    """alon 2: irregular if more than (1/8)ε⁴·n vertices deviate by > ε⁴·n.
+
+    [16] p.17 / [28] p.4: the trigger counts BOTH directions. the certificate is
+    then A' = all of Vr and B' = the larger one-sided set ([16] p.18: at least
+    half the deviant vertices share a direction, so |B'| ≥ (ε⁴/16)n).
+    degrees come from the same matrix as ``bip_avg_deg`` (Vs column sums).
+    """
+    s_degrees = cl_pair.vs_degrees()
+    d = cl_pair.bip_avg_deg
     # paper/alon: ε⁴ n
     deviation_threshold = (self.epsilon ** 4.0) * cl_pair.n
-    # vertices whose degree is more than ε⁴n from the mean
-    deviated_nodes = np.abs(s_vertices_degrees - cl_pair.bip_avg_deg) > deviation_threshold
+    high = (s_degrees - d) > deviation_threshold
+    low = (d - s_degrees) > deviation_threshold
+    n_deviated = int(high.sum() + low.sum())
+    # trigger: more than (1/8)ε⁴ n, both directions
+    if n_deviated <= (1.0 / 8.0) * (self.epsilon ** 4.0) * cl_pair.n:
+        return False, [[], []], [[], []]
 
-    # too-high degree side
-    one_direction_nodes = deviated_nodes * (s_vertices_degrees - cl_pair.bip_avg_deg > deviation_threshold)
-    # paper: (ε⁴/16) n
-    is_irregular = one_direction_nodes.sum() >= (1.0 / 16.0) * (self.epsilon ** 4.0) * cl_pair.n
-
-    if not is_irregular:
-        # too-low degree side
-        one_direction_nodes = deviated_nodes * (s_vertices_degrees - cl_pair.bip_avg_deg < -deviation_threshold)
-        is_irregular = one_direction_nodes.sum() >= (1.0 / 16.0) * (self.epsilon ** 4.0) * cl_pair.n
-
-    if is_irregular:
-        # witness x = all of vr, y = the deviant subset of vs
-        certs = [
-            list(cl_pair.index_map[0][range(cl_pair.n)]),
-            list(cl_pair.index_map[1][one_direction_nodes]),
-        ]
-        compls = [
-            [],
-            list(cl_pair.index_map[1][~one_direction_nodes]),
-        ]
-    return is_irregular, certs, compls
+    # certificate: larger of {too-high, too-low} (ties: too-high)
+    one_direction = high if int(high.sum()) >= int(low.sum()) else low
+    certs = [
+        list(cl_pair.index_map[0][np.arange(cl_pair.n)]),
+        list(cl_pair.index_map[1][one_direction]),
+    ]
+    compls = [
+        [],
+        list(cl_pair.index_map[1][~one_direction]),
+    ]
+    return True, certs, compls
 
 
 def alon3(self, cl_pair, fast_convergence=True):

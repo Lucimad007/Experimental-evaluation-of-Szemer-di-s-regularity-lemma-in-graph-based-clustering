@@ -45,7 +45,7 @@ def _replicator(A, x, inds, tol, max_iter):
 def _parse_weight_threshold(weight_threshold, n):
     """decode the paper-silent dset support cutoff.
 
-    ``none`` → absolute ``1/(1.5 n)`` (fiorucci / dslib). a float is an absolute
+    ``none`` → absolute ``1/(1.5 n)`` (fiorucci variant). a float is an absolute
     cutoff on the replicator weights. a string ``"rel80"`` / ``"rel0.8"`` keeps
     vertices whose weight is at least that fraction of the current maximum —
     a stricter reading of "greater than a threshold" (§2.3) that peels smaller
@@ -87,10 +87,11 @@ def dominant_sets(graph_mat, max_k=0, tol=1e-5, max_iter=1000, weight_threshold=
         a dominant set. ``none`` (default) uses ``1/(1.5 n)``. ``"rel95"`` keeps
         vertices at ≥ 95% of the current maximum weight.
     leftover_frac : float or none
-        stop when this fraction of vertices remain unclustered. ``none`` uses
-        5% for absolute cutoffs (fiorucci lineage) and 0% for relative cutoffs
-        (extract until every vertex is assigned, matching §2.3's sequential
-        "until all clusters are obtained").
+        stop when this fraction of vertices remain unclustered. ``none`` (default)
+        is 0: peel until every vertex is assigned, matching §2.3 ("repeats this
+        process with the remaining unallocated data until all clusters are
+        obtained"). pass a positive fraction only to reproduce the old
+        fiorucci-lineage 5% dump.
 
     returns
     -------
@@ -101,9 +102,9 @@ def dominant_sets(graph_mat, max_k=0, tol=1e-5, max_iter=1000, weight_threshold=
     if max_k == 0:
         max_k = graph_cardinality
     mode, thresh = _parse_weight_threshold(weight_threshold, graph_cardinality)
-    # relative cutoffs peel until every vertex is labelled
+    # §2.3: extract until all clusters are obtained
     if leftover_frac is None:
-        leftover_frac = 0.0 if mode == "rel" else 0.05
+        leftover_frac = 0.0
     clusters = np.zeros(graph_cardinality, dtype=int)
     already_clustered = np.full(graph_cardinality, False, dtype=bool)
     k = 0
@@ -114,7 +115,7 @@ def dominant_sets(graph_mat, max_k=0, tol=1e-5, max_iter=1000, weight_threshold=
         # leftover dumped into the last cluster
         if remaining <= ceil(leftover_frac * graph_cardinality):
             break
-        # uniform start on the remaining vertices
+        # paper: x_i^(0) = 1/n on the data still being clustered
         x = np.full(graph_cardinality, 1.0)
         x[already_clustered] = 0.0
         denom = x.sum()
@@ -131,7 +132,7 @@ def dominant_sets(graph_mat, max_k=0, tol=1e-5, max_iter=1000, weight_threshold=
             peak = float(y.max()) if y.size else 0.0
             cluster = np.where(y >= thresh * peak)[0] if peak > 0 else np.empty(0, dtype=int)
         else:
-            # absolute: y_i ≥ 1/(1.5 n)
+            # absolute: y_i ≥ threshold (§2.3: "greater than a threshold")
             cluster = np.where(y >= thresh)[0]
         cluster = cluster[~already_clustered[cluster]] if cluster.size else cluster
         # empty support: take the single heaviest leftover vertex

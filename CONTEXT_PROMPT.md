@@ -27,9 +27,24 @@ point in the reproduction. Keep this file updated as the codebase evolves.
 > recorded by the experiments (`degree_mode` / `enh_degree_mode` columns).
 > Details and quotes: `spec/regularity_partitioning.md`.
 >
-> Open: `"weighted"` is honest but scores ~0.15–0.46 NMI at a single parameter
-> point, well below the paper's Reg-* values. Whether a variant exists that is
-> both permutation-invariant and reproduces Tables 2–5 is **unresolved** (G5).
+> Closed, 2026-08-27 (pilot Exp 2): `"weighted"` on the paper's recommended
+> `(ε, ϵ, b, σ)` grid, `d₀ = 0`, both stop rules, SPC/APC/DSet, datasets
+> Wine/Seeds/Ecoli/Appendicitis. Shuffle-invariance **24/24** (`|Δ NMI| = 0`).
+> Best enhanced NMI is 0.40–0.55 on Wine/Seeds/Ecoli (paper 0.58–0.81) and
+> 0.775 on Appendicitis (paper 0.82); enhancement *hurts* original on 9/12
+> cells. Stop rules produced identical best NMI. Tables 2–5 are **not**
+> recovered by any paper-named setting under a graph-faithful partitioner.
+> See `RESULTS.md`. Expanding to 20 datasets / Exp 1 / Exp 3 will not change
+> that. A later recovery hunt (kNN, `w>τ`, …) is out of scope of the paper.
+>
+> Closed, 2026-08-30: `alon2` now uses Vs column sums of the same matrix as
+> `bip_avg_deg`, the [16]/[28] both-direction `(1/8)ε⁴n` trigger, and `A'=Vr`
+> with `B'` the larger one-sided set. V0 follows [28] Algorithm 2 (leave in V0
+> if `|C0|≤εn`; distribute into existing classes if `|C0|>εn` and `|C0|>|P|`;
+> else irregular). Weighted V0 only accumulates. Tests: `tests/test_alon2.py`,
+> `tests/test_v0.py`. `--profile paper` is still support + Algorithm 1 + `d0`
+> grid; it no longer reproduces the index-order artifact. Tables 2–5 remain
+> unrecovered. See `RESULTS.md` (corrected honest Exp 2, 24/24 invariance).
 >
 > Circumstantial: in the paper's own Tables 2–5, all four Reg-* algorithms give
 > identical values on Seeds, Appendicitis, Rice and Banknote across all four
@@ -98,19 +113,21 @@ Paper §3.4: "we calculate the pairwise similarity matrix W, obtaining the
 original graph G" — NO threshold ever defined. Code (inherited verbatim from
 Fiorucci's dense_graph_reducer): `adj_mat = (sim_mat > 0.0).astype(float)`.
 The Gaussian kernel is strictly positive, so this support is the COMPLETE
-graph. Measured consequences: alon2 fires on every pair (it compares an
-UNWEIGHTED degree against a WEIGHTED mean degree), alon3 never runs, n_ir is
-always C(k,2), and the split degenerates to vertex index order — which is why
-the enhanced numbers tracked the class-sorted row order of UCI files rather
-than the graph. Answer to Q2: YES, the ordering must be [16] Eq. 15's average
-weighted degree; that is now `degree_mode="weighted"` and it is exactly
+graph. Measured consequences *before 2026-08-30*: alon2 fired on every pair
+(it compared an UNWEIGHTED degree against a WEIGHTED mean degree), alon3 never
+ran, n_ir was always C(k,2), and the split degenerated to vertex index order —
+which is why the enhanced numbers tracked the class-sorted row order of UCI
+files rather than the graph. Answer to Q2: YES, the ordering must be [16]
+Eq. 15's average weighted degree; that is `degree_mode="weighted"` and it is
 permutation-invariant. Q1 (kNN / w > tau) remains unused: it is a paper-silent
 preprocessing choice we decline to invent.
-Still open: alon2's row/col mix-up (it derives the deviation mask from V_r's
-degrees, then applies it to index_map[1] = V_s) is inherited from the
-reference and NOT yet fixed — harmless while all degrees are equal.
+Closed 2026-08-30: `alon2` takes Vs degrees from `vs_degrees()` (column sums of
+the same matrix as `bip_avg_deg`) so the row/col mix-up is gone. On an
+unweighted complete bipartite pair every degree equals the mean, so `alon2`
+does not fire (`tests/test_alon2.py`). Weighted experimental runs still use
+Eq. 3 pairs, so weighted degrees vary and the 1/8 trigger can still fire.
 
-A4b. HALVING and V0 — ANSWERED 2026-08-27 from the references.
+A4b. HALVING and V0 — ANSWERED 2026-08-27 (halving); V0 guard 2026-08-30.
 "Divide the classes into a constant number of subclasses" = 2 for the lineage
 this paper follows. [28] §4 always produces exactly 2 subclasses per class,
 "filled up to |C_i|/2" (stated twice), and exposes no l parameter — its
@@ -119,7 +136,8 @@ Algorithm 1 signature is ApproxAlon(ε, c_min, G). [21] adopts [28] explicitly
 By contrast [17] splits into l ∈ {3,4} with m = ⌊|V_i|/l⌋, and [16] into a
 user-defined number by slicing the awdeg-sorted sequence. So halving is right
 for our lineage. Our awdeg_based also halves. ✓
-V0 is NOT fixed, and the four papers disagree completely:
+The four papers disagree on V0; we follow [28] Alg 2 (support) and [16]
+accumulate (weighted):
   [16] V0 only ACCUMULATES (the low-degree tail of each class); no re-chunking,
        no |V0| < εn check anywhere in the algorithm.
   [17] claims "we recycle most of V0" but the algorithm text actually
@@ -130,8 +148,11 @@ V0 is NOT fixed, and the four papers disagree completely:
        This is also the only explicit |V0| vs εn test in any of them.
   [21] SILENT on V0 recycling; V0 is excluded from R and its members go to the
        nearest cluster at the end.
-Our code re-chunks V0 unconditionally, which is closest to [28] but drops its
-two-part guard. Documented deviation.
+Code now implements [28] Algorithm 2 (`apply_v0_guard`): leftovers stay in V0
+if |C0| ≤ εn; if |C0| > εn and |C0| > |P| each existing class gets the same
+number of C0 vertices (equity preserved); otherwise the partition is irregular.
+Weighted path: V0 only accumulates (same guard, never minting classes from the
+tail). Tests: `tests/test_v0.py`.
 
 A4. Refinement (Step 4) mechanics — NOT IN ANY PAPER TEXT.
 Paper only says: "divide current classes to obtain a new partition P′ with
@@ -142,12 +163,10 @@ of subclasses". The concrete mechanism exists ONLY in the reference code:
 per class with an irregular partner: keep the LARGER of (cert, complement),
 dump the smaller side wholesale into V0, trim the larger side to exactly
 ⌊c/2⌋ by degree (highest first); classes with NO partner are split in two
-by degree; then V0 leftovers are re-chunked into NEW classes of the same
-⌊c/2⌋ size (degree-ordered) so the partition stays equitable and |V0| < εn.
+by degree; then V0 is handled by `apply_v0_guard` (no new classes from C0).
 Note ~half the graph flows through V0 each refinement by construction.
-Q: Is this faithful to "a constant number of subclasses"? Is the V0
-re-chunking (which is also only in the reference code, not the paper)
-justified, or should leftover vertices stay in V0?
+Closed 2026-08-30: leftovers stay in V0 unless the [28] two-part guard
+distributes them into existing classes.
 
 A5. Certificate vs degree for the split.
 Code splits by certificates (cert/complement) with degree only for trimming;
@@ -157,20 +176,15 @@ Q: Theoretically certificate splitting is what raises the Szemerédi index
 With the complete-support degeneracy, certificate sizes are all-or-nothing
 (hence splits are effectively balanced index-order) — does that matter?
 
-A6. Condition 2 constant: 1/8 vs 1/16 — NOT equivalent, corrected 2026-08-27.
+A6. Condition 2 constant: 1/8 vs 1/16 — IMPLEMENTED 2026-08-30.
 [16] p.17, [28] p.4 and [18] p.3 all print the TRIGGER as "more than (1/8)ε⁴n
 vertices whose degrees deviate from d by at least ε⁴n", counting BOTH
 directions. [16] p.18 then derives the CERTIFICATE: "if the number of deviating
 vertices is more than (ε⁴/8)n, then the degrees of at least half of them
 deviate in the same direction and if we let B′ be such a set of vertices and
 A′ = A we are done" — so 1/16 bounds the certificate, it is not the trigger.
-The reference code and this repo instead test `one_direction_count ≥
-(1/16)ε⁴n`, which is a DIFFERENT predicate, not an equivalent rewriting (e.g.
-0.06ε⁴n up + 0.06ε⁴n down fires neither, but a 0.07ε⁴n one-sided count fires
-the repo's test and not the theorem's). Moot while the support is complete
-(every vertex deviates), but wrong if the support is ever made sparse.
-Note also [28] and [18] omit [16]'s "A′ = A" sentence entirely; returning all
-of V_r on condition 2 follows [16] specifically.
+`alon2` now uses that trigger and returns A' = all of Vr, B' = the larger
+one-sided set. Tests: `tests/test_alon2.py`.
 
 A7. d₀ (reduced-graph adjacency threshold) — NEVER VALUED, NOW SEARCHED.
 §3.3: "two vertices are adjacent if the corresponding classes are ε-regular
@@ -344,14 +358,15 @@ G1. Is Algorithm 1 line 12 (`n_ir < k(k−1)/2`) a typo for `n_ir ≤ ε·C(k,2)
 Which one reproduces the paper's Tables 2–5 better?
 G2. What threshold/support did the authors actually use to build the graph
 from W? Does the complete-support degeneracy matter for the results?
-G3. Is the V0 re-chunking + ⌊c/2⌋ halving refinement (reference mechanics,
-not in the paper text) the right realization of "divide classes into a
-constant number of subclasses"?
+G3. ANSWERED 2026-08-30: halving is the lineage constant; V0 no longer mints
+new classes. Leftovers stay in V0 unless [28] Alg 2 distributes them.
 G4. Is grid-searching d₀ legitimate? Lemma 2 requires d₀ > ε — should values
 below ε be excluded?
-G5. Why do Leaves Reg-APC/DSet not reach the paper's values — is it the
-line-12 early stop (k < NC), the DSet threshold, σ selection, or the
-similarity/preprocessing assumptions?
+G5. ANSWERED 2026-08-30 (corrected Alon/V0): Tables 2–5 still do not survive
+a permutation-invariant partitioner. Honest Exp 2 (24/24 invariance):
+Wine/Seeds/Ecoli 0.16–0.35 below Reg-*; Appendicitis 0.865 vs paper 0.82
+(identical across SPC/APC/DSet). Enhancement beats original on 6/12 cells.
+See `RESULTS.md`.
 G6. Would switching the DSet cutoff to DSLib's 1e-5 (or Hou 2023's 0.0001)
 change Reg-DSet on the reduced graph materially?
 G7. Does the mean-similarity V0 assignment (vs distance-based) matter?

@@ -18,6 +18,16 @@ where:
 
 The diagonal is set to 0 (no self-similarity), matching the reference implementation.
 
+## Metric axis (paper-silent extension)
+
+`src/enhanced/similarity.py` also accepts `metric ∈ {euclidean, cosine,
+correlation}` (default `euclidean` = the paper cell). Cosine and correlation
+change only the distance `d(x, y)` that feeds the same Gaussian kernel; the
+regularity partitioning, reduced graph and Algorithm 1 are untouched. The axis
+is exposed to `_best_over_enhanced_grid(..., graph_metrics=(...))` and to the
+`_probe_*` / `_refine_winners` scripts, and is documented as a graph-construction
+ablation, not as part of the paper protocol.
+
 ## SPRG
 
 SPRG learns its own similarity matrix and does **not** use `σ`. See

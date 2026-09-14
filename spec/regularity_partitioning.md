@@ -64,12 +64,12 @@ compression ratio `ϵ = |R|/|G|`, with `⌊1/ϵ⌋` the minimum class size.
 | Paper | Code | Notes |
 |---|---|---|
 | Step 1 | `partition_initialization.py` | leftover vertices stay in `V0`; `|V0| = n mod b < b` |
-| Step 2 | `check_pairs_regularity` + `conditions.py` alon1/2/3 | scans **every** pair (needed for Algorithm 1's `n_ir`); witnesses from Alon/Fiorucci |
-| Step 3 | `check_partition_regularity(..., stop_rule="theoretical")` | `n_ir ≤ ε · C(k,2)`. Experiments use Algorithm 1 line 12 instead (`"algorithm1"`, default) |
-| Step 4 | `refinement_step.py` | **not** `k·4^k` — modification 1: at most one partner, cardinality halved |
+| Step 2 | `check_pairs_regularity` + `conditions.py` alon1/2/3 | Alon always on the **0/1 support** (`ClassesPair`), never on Gaussian weights. Eq. 3 is used only when building `R` |
+| Step 3 | `check_partition_regularity(..., stop_rule="theoretical")` | default: `n_ir ≤ ε · C(k,2)` ([16]/[21]/[28]). `"algorithm1"` is the printed line 12 (no ε) |
+| Step 4 | `refinement_step.alon_based` | Alon [30] cert vs complement, **modification 1**: at most one irregular partner so each class yields a **constant** number of subclasses (2), not \(k\cdot 4^k\) |
 | Step 5 | `while` in `regularity_lemma.py::run` | `i ← i+1` is the next loop pass |
 | Mod 1 | `random.choice` of one irregular partner | applied at refinement; counting still walks all pairs |
-| Mod 2 | `conditions.alon3` + `classes_pair.find_Y / Yp / y0` | Fiorucci greedy; Alon 1/2 are the other two sufficient conditions of [30] |
+| Mod 2 | `conditions.alon3` first among irregularity tests | Fiorucci [28] greedy cert; `alon2` is a [30] fallback |
 | Mod 3 | `_line3_compressible`: `ϵ > k/n` | min class size `⌊1/ϵ⌋` |
 
 Original Alon `k_{i+1} = k_i · 4^{k_i}` is **intentionally not** implemented —
@@ -78,8 +78,10 @@ that is the exponential growth the paper's first modification exists to avoid.
 ## Implementation notes (Fiorucci [28])
 
 - Condition 1 (regular): `bip_avg_deg < ε³ · n`.
-- Condition 2 (irregular): ≥ `(1/16)·ε⁴·n` vertices whose degree deviates from
-  the average by more than `ε⁴ · n`.
+- Condition 2 (irregular): more than `(1/8)·ε⁴·n` vertices (both directions)
+  whose degree deviates from the average by more than `ε⁴ · n`; certificate
+  `A' = Vr`, `B'` = the larger one-sided set. Degrees are Vs column sums of
+  the same matrix as `bip_avg_deg`.
 - Condition 3 (irregular): neighbourhood-deviation matrix, greedy `Y` until
   `σ(Y) ≥ (ε³/2)·n`, then `Y'`, `y0`, certificates at `2ε⁴·n`.
 - On a class with no irregular partner, Fiorucci's reference sorts by a stale
@@ -114,15 +116,17 @@ paper dataset is the **complete graph** (measured on Ecoli: off-diagonal support
 density `1.000000`, every degree exactly `335`). The consequences are not
 cosmetic — they disable the partitioner completely:
 
-1. `classes_vertices_degrees()` returns the **unweighted** degree (constant, = class
-   size `n`), while `bip_avg_deg` is the **weighted** mean degree `n·d̄w`. `alon2`
-   compares the two, so every vertex "deviates" by `n(1−d̄w)` against a threshold
-   of `ε⁴n`. On Ecoli that is `41.4` against `0.0425`.
-2. Therefore **`alon2` certifies every pair irregular**, with certificate = the
-   whole class and empty complement. Measured across 3 datasets × 6 σ values,
-   every pair was decided by `alon1` or `alon2` and **`alon3` never executed** —
-   so the paper's modification 2 (Fiorucci's degree-based greedy certificate) is
-   dead code.
+1. `vs_degrees()` returns the column sums of the **same** matrix as
+   `bip_avg_deg`. The old helper compared **unweighted** degrees (constant, =
+   class size `n`) to the **weighted** mean `n·d̄w`. On Ecoli that was `41.4`
+   against `0.0425`, so every vertex "deviated".
+2. Therefore **the old `alon2` certified every pair irregular**, with certificate
+   = the whole class and empty complement. Measured across 3 datasets × 6 σ
+   values, every pair was decided by `alon1` or `alon2` and **`alon3` never
+   executed** — so the paper's modification 2 (Fiorucci's degree-based greedy
+   certificate) was dead code. After 2026-08-30, unweighted complete pairs no
+   longer fire `alon2` (all degrees equal the mean). Weighted Eq. 3 pairs can
+   still fire because `ε⁴n` is small.
 3. `n_ir` is therefore always `C(k,2)`, so **neither stop rule ever fires** and the
    loop always exits on the `ϵ` compression guard. This makes the Algorithm 1
    line 12 vs §3.2 Step 3 question (the suspected typo) moot.
@@ -153,13 +157,15 @@ so Exp 1's "influence of b" curve measures nothing.
 
 ### `degree_mode`: the two readings
 
-`degree_mode` selects how "degree" is read when ordering vertices.
+Alon conditions always run on the 0/1 support. `degree_mode` only orders
+vertices for init / refine. On `K_n` (the Gaussian kernel) every equitable
+partition is already ε-regular, so Alon would stop at `k = b` and ignore `ϵ`.
+For `"weighted"` / `"spectral"` the driver then keeps splitting by awdeg /
+Fiedler until the compression guard — Sperotto's practical size threshold,
+not a fake irregularity certificate. `"support"` still stops when Alon says
+regular (index-order init, `k = b` on `K_n`).
 
-- **`"support"`** (default, reference-faithful): the 0/1 degree of `sim_mat > 0`,
-  exactly as Fiorucci's `dense_graph_reducer` does. Correct on the sparse 0/1
-  graphs that code targets; degenerate here, as measured above. Kept so the
-  reference behaviour stays reproducible and comparable.
-- **`"weighted"`**: Sperotto & Pelillo [16] Eq. 15, the *average weighted degree*
+- **`"weighted"`** (default): Sperotto & Pelillo [16] Eq. 15, the *average weighted degree*
 
   ```
   awdeg_S(i) = (1/|S|) Σ_{j∈S} ω(i,j),   S ⊆ V
@@ -178,17 +184,25 @@ so Exp 1's "influence of b" curve measures nothing.
   into 2 subsets (modification 1's "constant number of subclasses") along its
   awdeg-ordered sequence, and the least-connected tail joins `V0`. Note `awdeg`
   is **intra-class** (`S` = the class being split), which is what makes classes
-  progressively homogeneous. This mode is exactly permutation-invariant (verified
-  to machine precision on 9 dataset × algorithm cases).
+  progressively homogeneous. This mode is permutation-invariant.
 
-  Two deliberate deviations from [16] in this mode, both documented rather than
-  accidental. First, [16] uses Eq. 15 in the **refinement only** — its Step 1 is
-  "Arbitrarily divide the set V into an equitable partition P1" — whereas we also
-  order the initial partition by `awdeg` over `S = V`, so that `b` selects
-  coherent seed classes instead of index blocks. Second, [16] lets `V0` only
-  accumulate, while we re-chunk it; that follows [28], whose Algorithm 2 line 15
-  redistributes `C0`, except that [28] guards the redistribution with
-  `|C0| > εn and |C0| > |P|` and we redistribute unconditionally.
+- **`"support"`** (ablation): Fiorucci [28] 0/1 degree of `sim_mat > 0`. On
+  `K_n` every degree is equal, so init is vertex index order and Alon stops at
+  `k = b`. Kept to compare against the reference code, not used by default.
+
+  Two remaining deviations from [16] in this mode, both documented. First, [16]
+  uses Eq. 15 in the **refinement only** — its Step 1 is "Arbitrarily divide
+  the set V into an equitable partition P1" — whereas we also order the initial
+  partition by `awdeg` over `S = V`, so that `b` selects coherent seed classes
+  instead of index blocks. Second, [16] lets `V0` only accumulate, which we now
+  do: `apply_v0_guard` never mints new classes from the tail. If `|C0| > εn`
+  and `|C0| > |P|`, C0 is distributed into existing classes ([28] Algorithm 2);
+  if `|C0| ≤ εn` it stays in V0.
+
+If a refinement does not increase `k` (typical for `degree_based` when every
+pair is irregular and C0 is poured back into the same labels),
+`regularity_lemma.run` stops. Otherwise the loop would never hit the `ϵ > k/n`
+guard.
 
   The "constant number of subclasses" being **2** is not a guess: [28] §4 always
   produces exactly two subclasses per class, "filled up to `|C_i|/2`", and [21]
@@ -196,11 +210,9 @@ so Exp 1's "influence of b" curve measures nothing.
   outlier, splitting into `l ∈ {3,4}` with `m = ⌊|V_i|/l⌋`.
 
 Note that [16] also states "the algorithms are not influenced by edge-weights",
-which is what licenses running the Alon *conditions* on the support. That is
-harmless in `"weighted"` mode: the conditions still report every pair irregular,
-so the loop runs to the `ϵ` guard exactly as §4.1 describes ("terminating when
-the number of classes is greater than `ϵ|G|` in most cases"), and the refinement
-is driven by Eq. 15 rather than by certificates.
+which is what licenses running the Alon *conditions* on the support. Conditions
+always see the 0/1 pair (`ClassesPair`). Eq. 3 weights only `R`. In `"weighted"`
+mode the split itself is Eq. 15 rather than certificates.
 
 Any other adjacency threshold (kNN, `w > τ`) is a paper-silent preprocessing
 choice and is **not** used; `drop_edges_between_irregular_pairs` and

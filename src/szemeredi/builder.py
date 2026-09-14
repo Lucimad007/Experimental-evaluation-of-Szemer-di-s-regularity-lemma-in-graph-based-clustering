@@ -13,20 +13,35 @@ def build_regularity_lemma(
     random_refinement,
     drop_edges_between_irregular_pairs,
     density_threshold=0,
-    degree_mode="support",
+    degree_mode="weighted",
+    adj_threshold="mean",
 ):
     """return a configured szemerediRegularityLemma.
 
-    kind: "alon" (paper: "we use the one by alon et al.") or "frieze_kannan".
+    kind: "alon", "frieze_kannan", or "fiorucci" (upstream dense_graph_reducer).
     epsilon: paper ε. density_threshold: paper d₀ (§3.3, unnamed; 0 = keep all).
-    degree_mode: "support" (fiorucci [28] reference mechanics, 0/1 degree) or
-    "weighted" (sperotto & pelillo [16] eq. 15 average weighted degree). see
-    spec/regularity_partitioning.md — on dense similarities the 0/1 support is
-    the complete graph, which makes "support" fall back to vertex index order.
+    degree_mode: vertex order for initialization (and leftover packing).
+    "spectral" = Fiedler order for those steps. refinement is always alon
+    [30] step 4 with hou modification 1. alon conditions run on the 0/1
+    support; eq. 3 is used only to weight r.
     """
+    if kind == "fiorucci":
+        from .fiorucci_ref import FiorucciRegularityLemma
+
+        return FiorucciRegularityLemma(
+            sim_mat,
+            epsilon,
+            is_weighted,
+            drop_edges_between_irregular_pairs,
+            kind="alon",
+            random_initialization=random_initialization,
+            random_refinement=random_refinement,
+        )
+
     alg = SzemerediRegularityLemma(
         sim_mat, epsilon, is_weighted, drop_edges_between_irregular_pairs,
         density_threshold=density_threshold, degree_mode=degree_mode,
+        adj_threshold=adj_threshold,
     )
 
     # paper: "dividing v arbitrarily" — degree order is the fiorucci default.
@@ -34,14 +49,14 @@ def build_regularity_lemma(
     alg.partition_initialization = (
         partition_initialization.random if random_initialization else partition_initialization.degree_based
     )
-    # randomized refinement is not implemented
-    alg.refinement_step = (
-        refinement_step.awdeg_based if degree_mode == "weighted" else refinement_step.degree_based
-    )
+    # hou §3.2: alon step 4, ≤1 irregular partner → cert vs complement.
+    alg.refinement_step = refinement_step.alon_based
 
     if kind == "alon":
-        # paper: three alon tests; experiments use this
-        alg.conditions = [conditions.alon1, conditions.alon2, conditions.alon3]
+        # hou §3.2 mod 2: certificates from fiorucci [28] (alon3), not alon2.
+        # alon1 is the cheap sparse-regular test; alon2 is [30] only if [28]
+        # does not decide.
+        alg.conditions = [conditions.alon1, conditions.alon3, conditions.alon2]
     elif kind == "frieze_kannan":
         alg.conditions = [conditions.frieze_kannan]
     else:

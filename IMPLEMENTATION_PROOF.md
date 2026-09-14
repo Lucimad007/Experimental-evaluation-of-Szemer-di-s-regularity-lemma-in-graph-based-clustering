@@ -212,32 +212,31 @@ def alon1(self, cl_pair):
     return cl_pair.bip_avg_deg < (self.epsilon ** 3.0) * cl_pair.n, [[], []], [[], []]
 ```
 
-Condition 2 (irregular): ≥ `(1/16)·ε⁴·n` vertices deviating from the average
-degree by more than `ε⁴·n`. ✅
+Condition 2 (irregular): more than `(1/8)·ε⁴·n` vertices (both directions)
+deviating from the average degree by more than `ε⁴·n`; `A'=Vr`, `B'` = larger
+one-sided set. ✅
 
-```27:51:src/szemeredi/conditions.py
+```25:54:src/szemeredi/conditions.py
 def alon2(self, cl_pair):
-    """Condition 2 (irregular): many s-vertices deviating from the average degree."""
-    certs = [[], []]
-    compls = [[], []]
-    s_vertices_degrees = cl_pair.classes_vertices_degrees()[1, :]
+    """alon 2: irregular if more than (1/8)ε⁴·n vertices deviate by > ε⁴·n."""
+    s_degrees = cl_pair.vs_degrees()
+    d = cl_pair.bip_avg_deg
     deviation_threshold = (self.epsilon ** 4.0) * cl_pair.n
-    deviated_nodes = np.abs(s_vertices_degrees - cl_pair.bip_avg_deg) > deviation_threshold
-    one_direction_nodes = deviated_nodes * (s_vertices_degrees - cl_pair.bip_avg_deg > deviation_threshold)
-    is_irregular = one_direction_nodes.sum() >= (1.0 / 16.0) * (self.epsilon ** 4.0) * cl_pair.n
-    if not is_irregular:
-        one_direction_nodes = deviated_nodes * (s_vertices_degrees - cl_pair.bip_avg_deg < -deviation_threshold)
-        is_irregular = one_direction_nodes.sum() >= (1.0 / 16.0) * (self.epsilon ** 4.0) * cl_pair.n
-    if is_irregular:
-        certs = [
-            list(cl_pair.index_map[0][range(cl_pair.n)]),
-            list(cl_pair.index_map[1][one_direction_nodes]),
-        ]
-        compls = [
-            [],
-            list(cl_pair.index_map[1][~one_direction_nodes]),
-        ]
-    return is_irregular, certs, compls
+    high = (s_degrees - d) > deviation_threshold
+    low = (d - s_degrees) > deviation_threshold
+    n_deviated = int(high.sum() + low.sum())
+    if n_deviated <= (1.0 / 8.0) * (self.epsilon ** 4.0) * cl_pair.n:
+        return False, [[], []], [[], []]
+    one_direction = high if int(high.sum()) >= int(low.sum()) else low
+    certs = [
+        list(cl_pair.index_map[0][np.arange(cl_pair.n)]),
+        list(cl_pair.index_map[1][one_direction]),
+    ]
+    compls = [
+        [],
+        list(cl_pair.index_map[1][~one_direction]),
+    ]
+    return True, certs, compls
 ```
 
 Condition 3 (irregular): greedy certificate from the neighbourhood-deviation matrix
@@ -463,23 +462,18 @@ def degree_based(self):
             if is_classes_cardinality_odd:
                 self.classes[s_indices_ordered_by_degree.pop(0)] = 0
             self.classes[s_indices_ordered_by_degree[0:self.classes_cardinality]] = self.k
-    C0_cardinality = int(np.sum(self.classes == 0))
-    num_of_new_classes = C0_cardinality // self.classes_cardinality
-    nodes_in_C0_ordered_by_degree = np.array([x for x in self.degrees if x in np.where(self.classes == 0)[0]])
-    for i in range(num_of_new_classes):
-        self.k += 1
-        self.classes[
-            nodes_in_C0_ordered_by_degree[
-                (i * self.classes_cardinality):((i + 1) * self.classes_cardinality)
-            ]
-        ] = self.k
+    c0_set = set(np.where(self.classes == 0)[0])
+    c0_ordered = [x for x in self.degrees if x in c0_set]
+    apply_v0_guard(self, c0_ordered)
 ```
 
-> In the reference implementation the no-irregular-partner branch sorted by a
-> stale `s_r_degs` from a previous class pair (a latent `NameError` when the
-> first class had no irregular partner); we sort by global adjacency degree,
-> which is what "split in two by degree order" (the reference's own docstring)
-> requires. The `sys.exit` on V0 overflow is now a `RuntimeError`.
+> V0 follows Fiorucci [28] Algorithm 2 (`apply_v0_guard`): leftovers stay in
+> V0 when `|C0| ≤ εn`; otherwise they are distributed into existing classes if
+> `|C0| > |P|`, never minted as new classes. The `sys.exit` on V0 overflow is
+> a `RuntimeError`. In the reference implementation the no-irregular-partner
+> branch sorted by a stale `s_r_degs` from a previous class pair (a latent
+> `NameError` when the first class had no irregular partner); we sort by
+> global adjacency degree.
 
 ### §3.2 Practical modifications
 

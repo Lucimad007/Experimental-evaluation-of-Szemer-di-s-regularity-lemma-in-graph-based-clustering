@@ -7,8 +7,9 @@ as columns, we use each row of u as a data point and do clustering with
 standard methods like k-means".
 
 the two normalized variants the paper mentions ([22] shi–malik, [23] ng–jordan–
-weiss) are kept available via ``variant="njw"`` (row-normalized njw), but the
-default — and what the experiments use — is the unnormalized laplacian.
+weiss) are ``variant="shi_malik"`` (generalized eigenproblem ``l u = λ d u``)
+and ``variant="njw"`` (row-normalized ``l_sym``). experiments search all three
+when ``--clustering-variants all`` (the default); ``paper`` keeps unnormalized.
 """
 
 # arrays
@@ -55,8 +56,10 @@ def spc(sim_mat, n_clusters, random_state=314, n_init=10, variant="unnormalized"
     variant : str
         ``"unnormalized"`` (paper §2.1, default): ``l = d − s``, k smallest
         eigenvectors, rows of u as data points (no row normalization).
-        ``"njw"``: normalized laplacian ``i − d^{−1/2} s d^{−1/2}`` with row
-        normalization (ng–jordan–weiss, ref [23] of the paper).
+        ``"shi_malik"``: shi–malik ncut [22], generalized eigenproblem ``l u = λ d u``.
+        ``"njw"``: ng–jordan–weiss [23], ``l_sym`` with row-normalized u.
+        ``"row_kmeans"``: k-means on the rows of the similarity matrix itself
+        (natural for a small reduced graph r: each meta-node is its density profile).
     """
     # undirected graph
     S = _symmetrize(np.asarray(sim_mat, dtype=float))
@@ -71,6 +74,14 @@ def spc(sim_mat, n_clusters, random_state=314, n_init=10, variant="unnormalized"
         L = _symmetrize(L)
         # u = [u1 … uk]
         U = _k_smallest_eigenvectors(L, n_clusters)
+    # paper ref [22]: shi–malik ncut, l u = λ d u
+    elif variant == "shi_malik":
+        d_safe = np.where(d > 0, d, 1e-12)
+        L = np.diag(d_safe) - S
+        L = _symmetrize(L)
+        Dmat = np.diag(d_safe)
+        k = min(n_clusters, n)
+        _, U = scipy.linalg.eigh(L, Dmat, subset_by_index=[0, k - 1])
     # paper ref [23]: ng–jordan–weiss
     elif variant == "njw":
         d_safe = np.where(d > 0, d, 1e-12)
@@ -83,6 +94,16 @@ def spc(sim_mat, n_clusters, random_state=314, n_init=10, variant="unnormalized"
         norms = np.linalg.norm(U, axis=1, keepdims=True)
         norms = np.where(norms > 0, norms, 1e-12)
         U = U / norms
+    elif variant == "row_kmeans":
+        U = S.copy()
+        np.fill_diagonal(U, 0.0)
+        nrm = np.linalg.norm(U, axis=1, keepdims=True)
+        nrm = np.where(nrm > 0, nrm, 1.0)
+        U = U / nrm
+    elif variant == "row_njw":
+        from ..enhanced.similarity import gaussian_similarity
+        Sr = gaussian_similarity(S, 1.0)
+        return spc(Sr, n_clusters, random_state=random_state, n_init=n_init, variant="njw")
     else:
         raise ValueError(f"unknown SPC variant: {variant}")
 

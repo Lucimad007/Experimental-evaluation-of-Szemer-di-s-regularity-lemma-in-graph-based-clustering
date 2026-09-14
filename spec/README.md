@@ -30,7 +30,8 @@ or the spec change, update both and keep the mapping below accurate.
 - The regularity-partitioning algorithm follows Alon et al. (1994) with the practical
   modifications described in §3.2 and the degree-based greedy certificate method of
   Fiorucci et al. (2020). The reference implementation studied while building this is
-  `MarcoFiorucci/dense_graph_reducer` (kept locally in `.reference/`, gitignored).
+  `MarcoFiorucci/dense_graph_reducer` (clone into `.reference/`, gitignored).
+  Opt-in at runtime: `--alg-kind fiorucci`.
 
 ## Status
 

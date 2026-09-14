@@ -33,6 +33,13 @@ For each dataset and algorithm, compare:
 Report NMI and running time; the enhanced version should be better on both on the
 majority of datasets.
 
+## Raw vs z-score (not in the paper)
+
+Same Exp 2 protocol, twice: `raw` features (paper cell) and `zscore` (drop
+zero-variance / exact-duplicate columns, then standardize). Command:
+`python -m src.main preprocess`. The paper path (`exp2`) is unchanged and
+always uses `raw`.
+
 ## Exp 2b — Regularity vs k-means partitioning (§4.2, Fig. 11)
 
 Replace the regularity-partitioning step in Algorithm 1 with a **k-means-based**

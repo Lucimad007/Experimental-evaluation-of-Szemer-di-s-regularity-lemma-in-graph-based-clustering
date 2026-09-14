@@ -49,9 +49,9 @@ show the influence of the third. Example: for `ε = 0.1`, average NMI over all
 ## Not searched (paper-silent defaults)
 
 The paper does not name APC preference, DSet weight cutoff, or the reduced-graph
-adjacency threshold `d₀`'s value. Reproduction does **not** grid-search APC
-preference or DSet cutoff (APC uses the Frey–Dueck median, DSet uses
-`1/(1.5 n)`). `d₀` **is** searched in Exp 1/2/3 as a documented paper-silent
-extension (`config.D0_GRID`, which includes 0 = the pure-paper setting of keeping
-every Eq. 3 weight); Exp 2b fixes `d₀ = 0` because the ablation must hold every
-other part fixed.
+adjacency threshold `d₀`'s value. Reproduction **does** search those as documented
+axes (`config.clustering_variant_grid`, `config.D0_GRID` including adaptive
+names, Alon vs Frieze–Kannan, degree vs random init, all-pairs vs ε-regular R).
+`--clustering-variants paper` / `--profile paper` pin the §2 / Fiorucci cell.
+Exp 2b still fixes `d₀ = 0` because the ablation must hold every other part
+fixed.

@@ -1,16 +1,14 @@
 """affinity propagation clustering (apc) (§2.2 of hou et al., pr 171 (2026)).
 
-frey & dueck [10] message-passing algorithm. takes the pairwise similarity
-matrix and identifies exemplars automatically (no ``k`` required). uses
-scikit-learn's ``affinityPropagation``.
+hou et al. §2.2 is a description (pairwise similarity in, messages, automatic
+k). the updates are frey & dueck [10]. this module calls sklearn's
+``AffinityPropagation`` (the standard [10] implementation) with the knobs
+[10] actually names:
 
-preference (frey & dueck 2007, ref [10]): a shared value that "can be varied to
-produce different numbers of clusters. the shared value could be the median of
-the input similarities (resulting in a moderate number of clusters) or their
-minimum (resulting in a small number of clusters)." default is the median of
-positive off-diagonal similarities (``preference_quantile=50``). higher
-quantiles yield more exemplars — necessary on a reduced graph r whose entries
-are nearly uniform pair-densities, where the median under-clusters.
+- shared preference = median of the input similarities (or their minimum);
+  computed on off-diagonal entries, i.e. pairwise s(i,j) for i≠j.
+- stop when exemplar decisions are unchanged for 10 iterations ([10] p.973).
+- damping 0.5.
 """
 
 # silence sklearn's equal-similarity warning
@@ -23,31 +21,32 @@ from sklearn.cluster import AffinityPropagation
 
 
 def _shared_preference(S, preference_quantile):
-    """frey–dueck shared preference: a percentile of positive similarities."""
+    """frey–dueck shared preference: median / min of the input similarities.
+
+    [10]: "the shared value could be the median of the input similarities
+    (resulting in a moderate number of clusters) or their minimum (resulting
+    in a small number of clusters)." input similarities are the pairwise
+    entries s(i,j) for i≠j (the diagonal is preference, not an observed
+    similarity). zeros count: a sparse r whose median is 0 is a small-k
+    preference, as [10] wrote.
+    """
     n = S.shape[0]
-    # drop the diagonal
     off = S[~np.eye(n, dtype=bool)]
-    # paper [10]: typically the median of the input similarities
-    pos = off[off > 0]
-    values = pos if pos.size else off
-    if values.size == 0:
+    if off.size == 0:
         return 0.0
     q = float(preference_quantile)
-    # 0 → minimum (few clusters)
     if q <= 0:
-        return float(np.min(values))
-    # 100 → maximum (many clusters)
+        return float(np.min(off))
     if q >= 100:
-        return float(np.max(values))
-    # 50 = median (paper-silent default)
-    return float(np.percentile(values, q))
+        return float(np.max(off))
+    return float(np.percentile(off, q))
 
 
 def apc(
     sim_mat,
     random_state=314,
     max_iter=500,
-    convergence_iter=15,
+    convergence_iter=10,
     damping=0.5,
     preference_quantile=50,
 ):
@@ -56,8 +55,9 @@ def apc(
     returns integer labels in ``{0, ..., k-1}`` where ``k`` is determined
     automatically by the algorithm.
 
-    ``preference_quantile`` is the frey–dueck shared preference expressed as a
-    percentile of positive off-diagonal similarities (50 = median, 0 = minimum).
+    ``preference_quantile`` is the frey–dueck shared preference as a
+    percentile of off-diagonal similarities (50 = median, 0 = minimum).
+    ``convergence_iter`` defaults to 10 ([10] p.973).
     """
     S = np.asarray(sim_mat, dtype=float)
     # undirected

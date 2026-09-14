@@ -51,8 +51,8 @@ are initially potential exemplars; messages (responsibility and availability) ar
 updated by minimizing an energy function. The number of clusters is determined
 automatically (no `k` needed). We use the standard Frey–Dueck algorithm
 (`sklearn.cluster.AffinityPropagation`). The shared preference is the **median**
-of positive off-diagonal similarities (Frey–Dueck's "moderate" default). This is
-not a searched parameter.
+of the off-diagonal input similarities ([10]: "median of the input similarities").
+Stop when exemplar decisions are unchanged for **10** iterations ([10] p.973).
 
 ## 2.3 Dominant set clustering (DSet)
 
@@ -66,9 +66,11 @@ x_i^{(t+1)} = x_i^{(t)} * (A x^{(t)})_i / ( x^{(t)T} A x^{(t)} )
 
 with `x_i^{(0)} = 1/n`. After convergence, points whose weight exceeds a threshold
 form a dominant set (one cluster); the cluster is removed and the process repeats on
-the remaining points. The number of clusters is determined automatically. We follow
-the replicator-dynamics implementation (Pavan & Pelillo 2007; Bulo, Pelillo & Bomze
-2011) used in the reference code. Default weight threshold `1/(n * 1.5)` and a
-stop when fewer than 5% of points remain unclustered (Fiorucci / DSLib lineage;
-the paper only says "greater than a threshold"; Vascon et al. [27] default to
-`1e-5`, Hou et al. PR 2023 [25] use `0.0001`). This cutoff is not grid-searched.
+the remaining points **until all clusters are obtained**. The number of clusters is
+determined automatically. We follow the replicator of Pavan & Pelillo [9]
+(Eq. 1), not the faster dynamics of Bulo et al. [26]. Hou §2.3 does not name the
+numeric threshold; the paper-faithful cell is `0.0001` from Hou et al. PR 2023
+[25] (same first author, the same sentence). Vascon et al. [27] (the library the
+paper cites) use `1e-5`; `1/(1.5n)` is a Fiorucci-lineage extra. Leftover dump of
+5% of points is the searched extra `fiorucci05` — the paper cell peels until all
+clusters are obtained (leftover 0). Relative cutoff `rel95` is also searched.

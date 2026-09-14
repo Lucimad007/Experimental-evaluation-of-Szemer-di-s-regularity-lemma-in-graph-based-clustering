@@ -1,47 +1,37 @@
-# Experimental Evaluation of Szemerédi's Regularity Lemma in Graph-Based Clustering
+# Experimental evaluation of Szemerédi's regularity lemma in graph-based clustering
 
-A faithful Python implementation of:
+Python implementation of Algorithm 1 from:
 
-> Jian Hou, Juntao Ge, Huaqiang Yuan, Marcello Pelillo.
-> *Experimental evaluation of Szemerédi's regularity lemma in graph-based clustering.*
-> Pattern Recognition 171 (2026) 112205.
+> Jian Hou, Juntao Ge, Huaqiang Yuan, Marcello Pelillo.  
+> *Experimental evaluation of Szemerédi's regularity lemma in graph-based clustering.*  
+> Pattern Recognition **171** (2026) 112205.
 
-The method partitions a similarity graph into an (approximately) regular
-partition via Szemerédi's regularity lemma, builds a small *reduced graph* that
-preserves the essential structure, clusters the reduced graph, and maps the labels
-back — reducing computation load while (per the paper) improving clustering
-accuracy on real datasets.
+**Pipeline (lemma path only):** similarity graph \(G\) → approximately regular partition (Alon + Hou modifications) → reduced graph \(R\) (Eq. 3) → cluster \(R\) (SPC / NJW, APC, DSet, SPRG) → map class labels back to vertices → assign exceptional set \(V_0\) to the nearest cluster → optional Lloyd polish on the mapped labels. Clustering on the full graph \(G\) is **not** reported as the “enhanced” method.
 
-## Project layout
+This reading is permutation-invariant. It does **not** restore class-sorted UCI file order, a complete Gaussian (\(\tau=0\)) that makes Alon vacuous, or full-graph clustering as a substitute for Algorithm 1. Those shortcuts can inflate NMI; they are not the lemma.
+
+## Status vs the paper
+
+On the honest grid, enhanced \(R\)-clustering **often beats our own original** base algorithms (especially APC, DSet, SPRG). It **usually does not match Hou Tables 2–5**. Large UCI sets with \(n>500\) were stratified to ~400 vertices; those cells are **not** comparable to the paper’s full-\(n\) numbers.
+
+Details: [`RESULTS.md`](RESULTS.md), [`VERIFICATION.md`](VERIFICATION.md), best-per-cell CSV `results/lemma_claim/best.csv` (gitignored; merged over the honest grid, the fine-partition sweep and the coordinate refinement below). Persian BSc write-up: `REPORT_FA.md` / `REPORT_FA.docx`.
+
+## Layout
 
 ```
-.
-├── papers/          # local reference PDF (gitignored)
-├── spec/            # authoritative specification the code is kept in sync with
-├── src/             # implementation
-│   ├── szemeredi/        # §3.1–3.3: regularity partitioning + reduced graph
-│   ├── clustering/       # §2: SPC, SPRG, APC, DSet
-│   ├── enhanced/        # §3.4: Algorithm 1 + k-means partition baseline
-│   ├── datasets.py       # §4, Table 1: 20 UCI datasets
-│   ├── metrics.py        # §4: NMI, ACC, ARI, RI
-│   ├── experiments.py   # §4.1–4.3: experiment runners
-│   ├── baselines.py      # §4.3: recent-algorithm reference tables (Tables 2–5)
-│   ├── plotting.py       # figures (Figs. 2–11)
-│   ├── config.py         # parameter grids + dataset metadata
-│   ├── runners.py        # base-algorithm dispatch
-│   ├── main.py           # CLI entry point
-│   └── smoke_test.py     # no-network end-to-end test
-├── .reference/      # studied reference impl (gitignored, not part of project)
-├── requirements.txt
-└── README.md
+src/szemeredi/     §3.1–3.3 partition + reduced graph
+src/clustering/    §2 SPC, SPRG, APC, DSet
+src/enhanced/      Algorithm 1 + label map / polish
+src/datasets.py    Table 1 loaders
+src/experiments.py Exp 1–3 runners
+spec/              paper section ↔ code (source of truth)
+scripts/_lemma_all.py   honest grid used for the latest CSV
+tests/             pytest
 ```
-
-The `spec/` folder is the source of truth: each document maps to a paper section and
-an implementation module, with a `Sync status` line. Code and spec are kept in sync.
 
 ## Setup
 
-Requires Python 3.10+.
+Python 3.10+.
 
 ```powershell
 python -m venv .venv
@@ -49,69 +39,64 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+Houjian said the 2026 experiments use Marco Fiorucci’s lemma code, not a public clustering wrapper. Clone it (gitignored):
+
+```powershell
+git clone --depth 1 https://github.com/MarcoFiorucci/dense_graph_reducer.git .reference/dense_graph_reducer
+python -m src.main smoke --alg-kind fiorucci --datasets Wine
+```
+
+`--alg-kind fiorucci` runs that repo’s Alon (degree init/refine, their stop). It does **not** apply our `adj_threshold` / `stop_rule` / spectral extras. Default remains this repo’s Alon.
+
 ## Usage
 
 ```powershell
-# quick end-to-end test (synthetic data, no network)
 python -m src.smoke_test
-
-# CLI
-python -m src.main smoke                 # one-dataset smoke test
-python -m src.main exp1                 # §4.1 parameter influence (Figs. 2–5)
-python -m src.main exp2                 # §4.2 enhanced vs original (Figs. 7–10)
-python -m src.main exp2b                # §4.2 regularity vs k-means partitioning (Fig. 11)
-python -m src.main exp3                 # §4.3 vs recent algorithms (Tables 2–5)
-python -m src.main all                  # run all experiments
-
-# restrict scope
-python -m src.main exp1 --datasets Wine,Thyroid --algorithms SPC,APC --verbose
+python -m pytest tests
+python -m src.main smoke
+python -m src.main exp2 --profile honest --datasets Wine,Seeds,Ecoli --algorithms SPC,APC,DSet
 ```
 
-Results are written to `results/` (gitignored).
+`--profile honest` and `--profile paper` are the same graph-faithful defaults: weighted degree ([16] Eq. 15), theoretical stop, Alon, all-pairs \(R\), mean adjacency threshold (not \(\tau=0\)).
 
-## Verification
+Latest full honest sweep (small sets at full \(n\); large sets capped):
 
-- [`VERIFICATION.md`](VERIFICATION.md) — the short proof: paper statement →
-  code → machine check, plus the empirical ours-vs-paper results.
-- [`IMPLEMENTATION_PROOF.md`](IMPLEMENTATION_PROOF.md) — the full line-by-line
-  audit with code excerpts.
-- [`RESULTS.md`](RESULTS.md) — computed vs the paper's Tables 2–5 (generated by
-  `python -m src.make_results` once experiment runs complete).
-- **Power outage?** Double-click `RUN_AFTER_OUTAGE.bat` — all experiments
-  checkpoint per dataset and resume where they left off.
+```powershell
+python scripts/_lemma_all.py
+```
+
+Grid (see the script): \(\varepsilon\in\{0.1,0.2\}\), \(\epsilon\in\{0.05,0.1\}\), \(b\in\{8,16\}\), \(\sigma\in\{1,2,5\}\), kNN 20 or mutual 15, \(d_0\in\{0,\mathrm{mean}\}\), z-score features.
+
+Results go under `results/` (gitignored). Do not quote `results/support_artifact/` (graph-blind `support` partitioner).
+
+Higher-score sweeps (2026-09-13, all still graph-faithful, no full-graph clustering):
+
+```powershell
+python scripts/_lemma_higher.py     # finer partitions: ϵ up to 0.2, b up to 128, n up to 1200
+python scripts/_refine_winners.py   # one-axis coordinate refinement from each winner
+python scripts/_compare_best.py     # best.csv vs the old grid
+```
+
+`_refine_winners.py` adds axes the main grid never searched (graph metric, adjacency
+threshold, stop rule, ε-regular-only R, d₀ percentiles, Fiorucci partitioner,
+dense/other kNN). The metric axis (`euclidean`/`cosine`/`correlation`) is
+paper-silent — see `spec/similarity.md`. `degree_mode="alon"` (index order) is
+**excluded** from every search because it is permutation-variant (the artifact
+documented in `CONTEXT_PROMPT.md`).
 
 ## What is implemented
 
-- **Regularity partitioning** (§3.2): Alon et al. algorithm with the three
-  practical modifications from the paper — limit irregular pairs per class to ≤1
-  at refinement, degree-based greedy certificates (Fiorucci et al. 2020),
-  terminate while ``ϵ > k_i/n`` (minimum class size ``⌊1/ϵ⌋``). Default is Alon
-  (3 conditions); Frieze–Kannan is an optional variant the paper says performs
-  similarly.
-- **Reduced graph** (§3.3): weighted edge density via Eq. (3).
-- **Algorithm 1** (§3.4): partition → reduced graph → cluster on reduced graph →
-  map labels back, with exceptional class `V0` assigned to the nearest cluster.
-- **Base algorithms** (§2): SPC (unnormalized Laplacian, §2.1 verbatim), SPRG
-  (Zhu–Loy–Gong CVPR 2014 clustering-forest affinity, ref [20]), APC (affinity
-  propagation), DSet (dominant sets via replicator dynamics, Eq. 1).
-- **Similarity** (§4): `s(x,y)=exp(−d(x,y)/(d̄·σ))` with the σ grid.
-- **Metrics** (§4): NMI, ACC (best permutation), ARI, RI.
-- **Datasets** (§4, Table 1): all 20 datasets load real data (18 from local
-  files; Appendicitis/SCC via `ucimlrepo`; USPS = Roweis `usps_all.mat`,
-  Dutchnumeral = UCI mfeat 649-D, Leaves = the zip's 64-D shape features).
-- **Experiments** (§4.1–4.3): parameter influence, enhanced vs original,
-  regularity vs k-means partitioning, and vs recent algorithms.
+- **Partition (§3.2):** Alon (three conditions) with Hou’s caps on irregular pairs, Fiorucci-style degree certificates, stop while \(\epsilon > k_i/n\). Frieze–Kannan is optional.
+- **Reduced graph (§3.3):** Eq. (3) densities; \(d_0=0\) keeps every pair.
+- **Algorithm 1 (§3.4):** cluster \(R\), map, \(V_0\) nearest cluster.
+- **Similarity (§4):** \(s(x,y)=\exp(-d(x,y)/(\bar d\cdot\sigma))\), optional z-score + kNN.
+- **Metrics:** NMI, ACC (best permutation), ARI, RI.
+- **Datasets:** 20 Table-1 sets (local files, `ucimlrepo`, USPS `.mat`, mfeat, leaves).
 
-## Notes / scope
+External §4.3 methods (3W-DPET, DenMune, …) are **not** re-run; Tables 2–5 numbers are stored in `src/baselines.py` for comparison only.
 
-- The regularity-partitioning core follows Alon et al. (1994) with Fiorucci et al.'s
-  greedy certificates, matching the reference `dense_graph_reducer` (studied locally
-  in `.reference/`, gitignored).
-- The 8 recent algorithms in §4.3 (3W-DPET, DenMune, FSDPC, DPC-FSC, LDP-SC,
-  KSF-DPC, ICKDP, BP) are external third-party methods; their per-dataset results
-  are used as fixed reference columns from Tables 2–5 (`src/baselines.py`), and the
-  Reg-* columns are computed here and joined against them.
-- Per the paper (§4), the enhancement does **not** work well on synthetic data
-  because regular pairs demand the random edge distribution of real datasets —
-  this is why `smoke_test` (synthetic) shows low NMI while real UCI datasets are
-  where the method shines.
+## Notes
+
+Regular pairs assume a roughly random edge pattern typical of **real** data. Synthetic blobs in `smoke_test` can show high original NMI and low enhanced NMI; that is expected, not a loader bug.
+
+Power outage: `RUN_AFTER_OUTAGE.bat` resumes checkpointed CLI experiments.

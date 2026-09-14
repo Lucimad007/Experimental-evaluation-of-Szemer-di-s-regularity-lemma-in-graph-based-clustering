@@ -346,12 +346,17 @@ def sprg_similarity(X, n_clusters=None, **kwargs):
     return forest_affinity(X, **kwargs)
 
 
-def sprg(X, n_clusters, **kwargs):
-    """sprg: forest affinity + spectral clustering with ``n_clusters`` clusters."""
+def sprg(X, n_clusters, spc_variant="unnormalized", **kwargs):
+    """sprg: forest affinity + spectral clustering with ``n_clusters`` clusters.
+
+    ``spc_variant`` is forwarded to ``spc`` (paper [20] uses unnormalized;
+    ``njw`` / ``shi_malik`` are searched when ``--clustering-variants all``).
+    remaining kwargs go to ``forest_affinity`` (``variant``, ``n_trees``, …).
+    """
     # learned graph g
     A = forest_affinity(X, **kwargs)
-    # paper §2.1 spc
-    return spc(A, n_clusters)
+    # paper §2.1 spc (or a named spectral variant)
+    return spc(A, n_clusters, variant=spc_variant)
 
 
 def sprg_on_graph(sim_mat, n_clusters, min_samples_leaf=None, **kwargs):

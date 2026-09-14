@@ -43,8 +43,10 @@ is implemented here faithfully and that its claims hold on our runs:
 > match the paper's text; the text's procedure is what collapses on dense graphs.
 >
 > `degree_mode="weighted"` (Sperotto & Pelillo [16] Eq. 15) is exactly
-> permutation-invariant and is now searched alongside `"support"`. Re-running every
-> experiment under it is required before any empirical claim here is restored.
+> permutation-invariant (pilot: 24/24 winning configs, `|Δ NMI| = 0` after a
+> row shuffle). Re-running Exp 2 on that path with the paper's recommended grid
+> **does not restore the tables**: see [`RESULTS.md`](RESULTS.md). Section 2
+> below remains invalid as a reproduction of Hou et al.
 > Mechanism, quotes and the acceptance test: `spec/regularity_partitioning.md`.
 
 The complete line-by-line audit with code excerpts is in

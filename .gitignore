@@ -234,3 +234,17 @@ data/
 # Local caches
 *.npy
 *.csv
+node_modules/
+scripts/node_modules/
+scripts/package-lock.json
+
+# Generated exports (source of truth is the .md)
+README.html
+README.pdf
+REPORT_FA.html
+REPORT_FA.pdf
+REPORT_FA.docx
+
+# Editor-local index hints
+.cursorignore
+.cursorindexingignore

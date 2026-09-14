@@ -38,12 +38,13 @@ class ClassesPair:
         # paper eq. 2: unweighted edge density of the pair
         return float(self.bip_adj_mat.sum()) / (self.n ** 2.0)
 
-    def classes_vertices_degrees(self):
-        # degrees of vs vertices into vr
-        c_v_degs = np.sum(self.bip_adj_mat, 0)
-        # stack vr degrees under vs degrees
-        c_v_degs = np.vstack((c_v_degs, np.sum(self.bip_adj_mat, 1)))
-        return c_v_degs
+    def vs_degrees(self):
+        """column sums of the matrix that produced ``bip_avg_deg`` (Vs into Vr).
+
+        alon2 must compare these to ``bip_avg_deg``. using row sums (Vr) and
+        then indexing ``index_map[1]`` was the old mix-up.
+        """
+        return np.asarray(self.bip_adj_mat.sum(0), dtype=float)
 
     def neighbourhood_deviation_matrix(self, transpose_first=True):
         """alon condition 3 neighbourhood-deviation matrix m."""
@@ -142,6 +143,10 @@ class WeightedClassesPair(ClassesPair):
     def _bip_avg_degree(self):
         # weighted analogue of mean bipartite degree
         return (self.bip_sim_mat.sum(0) + self.bip_sim_mat.sum(1)).sum() / (2.0 * self.n)
+
+    def vs_degrees(self):
+        """column sums of ``bip_sim_mat`` — same matrix as ``bip_avg_deg``."""
+        return np.asarray(self.bip_sim_mat.sum(0), dtype=float)
 
     def compute_bip_density(self):
         # paper eq. 3: dw(x,y) = Σi Σj w(xi,yj) / (|x||y|)

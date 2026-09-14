@@ -105,6 +105,17 @@ def _exp2_section():
         lines.append(f"| {algo} | {int(r['wins'])}/{int(r['total'])} | "
                      f"{r['orig_mean']:.3f} | {r['enh_mean']:.3f} |")
     lines.append("")
+    lines.extend(_axis_table(
+        RESULTS / "exp2_enhanced_vs_original",
+        "### Exp 2 by clustering variant",
+        nmi_col="enh_nmi", orig_col="orig_nmi",
+    ))
+    lines.extend(_axis_table(
+        RESULTS / "exp2_enhanced_vs_original",
+        "### Exp 2 by regularity kind / init / drop-irregular",
+        nmi_col="enh_nmi",
+        axes=("alg_kind", "init_mode", "drop_irregular", "stop_rule", "degree_mode"),
+    ))
     return lines
 
 
@@ -115,13 +126,108 @@ def _exp2b_section():
     df = pd.read_csv(csv)
     wins = (df["reg_nmi"] > df["km_nmi"]).sum()
     ties = (df["reg_nmi"] == df["km_nmi"]).sum()
-    return [
+    lines = [
         "## Exp 2b — regularity vs k-means partitioning (Fig. 11)", "",
         f"Regularity partitioning beats k-means partitioning on **{wins}/{len(df)}** runs "
         f"({ties} ties); paper Fig. 11: regularity wins on most datasets.", "",
         f"- mean NMI: regularity {df['reg_nmi'].mean():.3f} vs k-means {df['km_nmi'].mean():.3f}",
         "",
     ]
+    lines.extend(_axis_table(
+        RESULTS / "exp2b_regularity_vs_kmeans",
+        "### Exp 2b by clustering variant",
+        nmi_col="reg_nmi", orig_col="km_nmi",
+    ))
+    return lines
+
+
+def _nmi_mean_col(df):
+    for name in ("nmi_mean", "enh_nmi_mean", "reg_nmi_mean", "nmi", "enh_nmi", "reg_nmi"):
+        if name in df.columns:
+            return name
+    return None
+
+
+def _axis_table(exp_dir, heading, nmi_col="nmi", orig_col=None,
+                axes=("clustering_variant",)):
+    """Render comparison_{axis}.csv as markdown tables."""
+    lines = [heading, ""]
+    any_table = False
+    for axis in axes:
+        csv = Path(exp_dir) / f"comparison_{axis}.csv"
+        if not csv.exists():
+            continue
+        df = pd.read_csv(csv)
+        if df.empty or axis not in df.columns:
+            continue
+        col = _nmi_mean_col(df)
+        if col is None:
+            continue
+        any_table = True
+        orig = None
+        if orig_col:
+            for cand in (f"{orig_col}_mean", orig_col):
+                if cand in df.columns:
+                    orig = cand
+                    break
+        if "algo" in df.columns:
+            keys = ["algo", axis]
+        else:
+            keys = [axis]
+        g = df.groupby(keys, dropna=False)[col].mean().reset_index()
+        lines.append(f"**{axis}**")
+        lines.append("")
+        if orig and "algo" in df.columns:
+            o = df.groupby(keys, dropna=False)[orig].mean().reset_index()
+            g = g.merge(o, on=keys)
+            lines.append("| algo | " + axis + " | mean NMI | mean orig/kmeans |")
+            lines.append("|---|---|---|---|")
+            for _, r in g.iterrows():
+                lines.append(
+                    f"| {r['algo']} | {r[axis]} | {r[col]:.3f} | {r[orig]:.3f} |"
+                )
+        elif "algo" in df.columns:
+            lines.append("| algo | " + axis + " | mean NMI |")
+            lines.append("|---|---|---|")
+            for _, r in g.iterrows():
+                lines.append(f"| {r['algo']} | {r[axis]} | {r[col]:.3f} |")
+        else:
+            lines.append("| " + axis + " | mean NMI |")
+            lines.append("|---|---|")
+            for _, r in g.iterrows():
+                lines.append(f"| {r[axis]} | {r[col]:.3f} |")
+        lines.append("")
+    if not any_table:
+        return []
+    return lines
+
+
+def _exp3_variants_section():
+    csv = RESULTS / "exp3_vs_recent" / "reg_variants.csv"
+    board = RESULTS / "exp3_vs_recent" / "comparison_leaderboard.csv"
+    if not csv.exists():
+        return ["## Exp 3 — per clustering variant", "",
+                "_reg_variants.csv not found — run exp3._", ""]
+    lines = ["## Exp 3 — per clustering variant (un-collapsed search)", ""]
+    df = pd.read_csv(csv)
+    if df.empty:
+        lines.append("_empty_")
+        lines.append("")
+        return lines
+    if board.exists():
+        lines.extend(_axis_table(
+            RESULTS / "exp3_vs_recent",
+            "Mean NMI by clustering variant (over datasets)",
+            nmi_col="nmi",
+        ))
+    else:
+        g = df.groupby(["algo", "clustering_variant"], dropna=False)["nmi"].mean().reset_index()
+        lines.append("| algo | clustering_variant | mean NMI |")
+        lines.append("|---|---|---|")
+        for _, r in g.sort_values("nmi", ascending=False).iterrows():
+            lines.append(f"| {r['algo']} | {r['clustering_variant']} | {r['nmi']:.3f} |")
+        lines.append("")
+    return lines
 
 
 def main():
@@ -136,12 +242,14 @@ def main():
         "`IMPLEMENTATION_PROOF.md`); 'ours/paper' columns show our computed "
         "value against the paper's own reported value for the same cell.", "",
         *exp3_lines,
+        *_exp3_variants_section(),
         *_exp2_section(),
         *_exp2b_section(),
         "## Exp 1 — parameter influence (Figs 2–6)", "",
         "See `results/exp1_parameter_influence/` (`influence_*.csv`, "
         "`influence_{ALGO}.png` with NMI + running-time panels, "
-        "`all_vs_selected.csv` / `.png` for the Fig. 6 comparison).", "",
+        "`all_vs_selected.csv` / `.png` for the Fig. 6 comparison, "
+        "`comparison_*.csv` for every clustering / partition axis).", "",
     ]
     Path(args.out).write_text("\n".join(lines), encoding="utf-8")
     print(f"wrote {args.out}")
