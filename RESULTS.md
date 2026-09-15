@@ -20,8 +20,10 @@ algorithms — the same all-Reg-* identity, while original SPC/DSet already scor
 - If a refinement does not increase `k`, the loop stops (otherwise
   `degree_based` can cycle when C0 is poured back into the same labels).
 
-Tests: `python -m pytest tests` (7 passed). Smoke: shuffled blobs, original
-SPC NMI 1.000, enhanced 0.026 (support path, `k` stuck at `b`).
+Tests: `python -m pytest tests` (**48 passed**, 2026-09-14). Smoke (honest
+path): n=200 blobs, original and enhanced SPC both NMI/ACC 1.000. The old
+support-path smoke (enhanced NMI 0.026, `k` stuck at `b`) is the index-order
+artifact, not the pipeline used below.
 
 ## What was run
 
@@ -85,26 +87,42 @@ below the paper. Appendicitis is above the paper and identical across SPC/APC/DS
 Not mixed into this verdict: DSet cutoff `1/(1.5n)` vs Hou 2023 `0.0001` /
 DSLib `1e-5`; APC 15 vs 10 stable iterations; SPRG `φ`.
 
-## Higher-score refinement (2026-09-13)
+## Fresh honest rerun (2026-09-14)
 
-Two added sweeps over the same graph-faithful pipeline (partition G → Eq. 3 R →
-cluster R → map → V0 → Lloyd/k-means polish), merged into
-`results/lemma_claim/best.csv`:
+Previous `results/lemma_claim/*.csv` files were moved to
+`results/lemma_claim/archive_pre_rerun/` so resume keys were empty, then:
 
-- `scripts/_lemma_higher.py`: finer partitions (ϵ up to 0.2, b up to 128, so k
-  can reach ~2ϵn), n up to 1200 on capped sets.
-- `scripts/_refine_winners.py`: coordinate pass from each cell's best config
-  over axes the main grid never searched — graph metric, `adj_threshold`, stop
-  rule, ε-regular-only R, d₀ percentiles, Fiorucci partitioner, dense/other
-  kNN. `degree_mode="alon"` was excluded (index order = permutation-variant).
+```text
+python scripts/_lemma_all.py      # 80 cells, ~1.6 h wall
+python scripts/_lemma_higher.py   # 60 SPC/APC/DSet cells, ~2.1 h wall
+python scripts/_refine_winners.py # merge → best.csv, ~5 min
+```
 
-Result over the 60 SPC/APC/DSet cells: **25 improved, mean ΔNMI +0.013, max
-+0.110** vs `all_small_first.csv`. Highlights: Leaves SPC 0.000 → 0.810,
-Rice APC/DSet 0.486 → 0.596, Banknote SPC 0.824 → 0.929, Libras
-SPC/APC/DSet +0.04..0.05, Spambase DSet 0.235 → 0.264. The best-per-cell table
-now beats the paper's Reg-* column on 18/60 cells. Remaining gaps are on
-high-dimensional sets (Sonar, Glass, USPS) and capped sets; see
-`results/lemma_claim/best.csv` for the winning config of every cell.
+**`all_small_first.csv` (20 datasets × 4 algorithms, SPRG included):** 80 rows,
+**78 valid** NMI cells (Leaves SPC and Leaves SPRG had no lemma score — SPC
+is recovered in `higher.csv`). Vs own original: **60 better, 3 tie, 15 worse**.
+Vs Hou Reg-*: **22 better, 56 worse**.
+
+Full-\(n\) highlights (lemma / orig / paper): Appendicitis all 1.000 (paper
+0.82); Wine SPC 0.911 / 0.909 / 0.76, APC/DSet/SPRG 0.893; Seeds SPC 0.775 /
+0.752 / 0.81; Ecoli SPC 0.701 / 0.623 / 0.78. Weak: Sonar, Spectf, Landmine.
+
+**`best.csv` (60 SPC/APC/DSet cells):** vs `all_small_first` **21/59 improved,
+mean ΔNMI +0.013, max +0.110**. Beats paper Reg-* on **18/60**. Sources:
+mostly `all_small`, then `higher`/`refined`. Highlights vs the same-run
+`all_small` column: Banknote APC 0.435→0.544, Rice APC/DSet 0.486→0.596,
+Libras +0.04..0.05, USPS APC 0.521→0.579, Leaves SPC recovered at 0.736
+(paper 0.82). Remaining gaps: Sonar, Glass, Spambase, capped Rice/Raisin/USPS.
+
+Quote **`results/lemma_claim/best.csv`** for SPC/APC/DSet and
+`all_small_first.csv` for SPRG. Capped \(n>500\) cells are not comparable to
+Hou’s full-\(n\) tables.
+
+### Why capped n > full n (probe, 2026-09-13, still valid)
+
+The 2026-09-13 n-cap probes were not re-run. Their conclusion stands: cap
+effects are seed luck at n=400 and kNN under-search at large n, not “more
+graph data hurts”. See `archive_pre_rerun/` and the notes below.
 
 ### Why capped n > full n (probe, 2026-09-13)
 
