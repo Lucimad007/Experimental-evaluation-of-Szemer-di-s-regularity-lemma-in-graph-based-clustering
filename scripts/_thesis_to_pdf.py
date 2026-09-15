@@ -209,7 +209,7 @@ p.caption {{
 
 CMDS = {
     "varepsilon": "ε",
-    "epsilon": "ε",
+    "epsilon": "ϵ",
     "sigma": "σ",
     "tau": "τ",
     "phi": "φ",
@@ -566,26 +566,28 @@ def cover_html(logo_b64: str) -> str:
     return f"""
 <section class="cover">
   <div class="bism">بسمه تعالی</div>
-  <img class="logo" alt="آرم دانشگاه صنعتی اصفهان" src="data:image/png;base64,{logo_b64}"/>
   <div class="uni">دانشگاه صنعتی اصفهان</div>
-  <div class="fac">دانشکده مهندسی برق و کامپیوتر<br/>گروه مهندسی کامپیوتر</div>
   <div class="rule"></div>
   <div class="kind">پروژۀ کارشناسی</div>
   <div class="title">ارزیابی تجربی لم منظمی سِمِرِدی<br/>در خوشه‌بندی مبتنی بر گراف</div>
-  <div class="sub">پیاده‌سازی و ارزیابی الگوریتم Hou و همکاران
-  (Pattern Recognition، ۲۰۲۶)</div>
+  <div class="sub">پیاده‌سازی و ارزیابی مقالۀ منتشرشده در سال ۲۰۲۶</div>
   <div class="card">
     <b>دانشجو:</b> سید محمد فاطمی<br/>
     <b>استاد راهنما:</b> دکتر زینب مالکی<br/>
     دانشیار، دانشکده مهندسی برق و کامپیوتر
   </div>
-  <div class="year">اصفهان — ۱۴۰۵ هجری شمسی</div>
+  <div class="year">۱۴۰۵ هجری شمسی</div>
 </section>
 """
 
 
+def normalize_persian_for_pdf(text: str) -> str:
+    # B Nazanin often fails on ه + combining hamza (U+0654); use ۀ (U+06C0) like the rest of the thesis.
+    return text.replace("\u0647\u0654", "\u06c0")
+
+
 def main() -> None:
-    md = MD.read_text(encoding="utf-8")
+    md = normalize_persian_for_pdf(MD.read_text(encoding="utf-8"))
     body = md_to_html(md)
     body, toc = add_heading_ids(body)
     logo_b64 = base64.b64encode(LOGO.read_bytes()).decode("ascii")

@@ -2,7 +2,7 @@
 
 Same graph-faithful pipeline as ``_lemma_all.py`` (Alon partition on the kNN
 support -> Eq. 3 reduced graph -> base clustering on R -> map -> V0 -> Lloyd/
-k-means polish). The only change is the searched grid: epsilon up to 0.2 and
+k-means polish). The only change is the searched grid: compression up to 0.2 and
 b up to 64/128 so the partition can resolve as many classes as the data needs
 (the old grid capped k at ~32, which made SPC/SPRG fail on nc>32 datasets).
 
