@@ -666,7 +666,7 @@ def front_html(logo_b64: str) -> str:
   <img class="logo" alt="" src="data:image/png;base64,{logo_b64}"/>
   <div class="uni">دانشگاه صنعتی اصفهان</div>
   <div class="fac">دانشکده مهندسی برق و کامپیوتر</div>
-  <div class="title">طبقه‌بندی مبتنی بر گراف با<br/>استفاده از لم نظم زمردی<br/>(Szemerdi)</div>
+  <div class="title">طبقه‌بندی مبتنی بر گراف با<br/>استفاده از لم نظم زمردی<br/>(Szemerédi)</div>
   <div class="kind">پروژه کارشناسی مهندسی کامپیوتر</div>
   <div class="author">سید محمد فاطمی</div>
   <div class="advisor-label">استاد راهنما</div>

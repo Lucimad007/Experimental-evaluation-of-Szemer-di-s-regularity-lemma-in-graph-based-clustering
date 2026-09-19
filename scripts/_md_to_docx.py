@@ -178,7 +178,7 @@ def cover(doc: Document):
     center("پروژهٔ کارشناسی", 14, True, 16)
     center("طبقه‌بندی مبتنی بر گراف با", 16, True, 2)
     center("استفاده از لم نظم زمردی", 16, True, 2)
-    center("(Szemerdi)", 16, True, 18)
+    center("(Szemerédi)", 16, True, 18)
     center("دانشجو: سید محمد فاطمی", 13, False, 4)
     center("استاد راهنما: دکتر زینب مالکی", 13, False, 4)
     center("دانشیار، دانشکده مهندسی برق و کامپیوتر", 11, False, 16)
