@@ -411,9 +411,7 @@ def cover_html(logo_b64: str) -> str:
   <div class="fac">دانشکده مهندسی برق و کامپیوتر<br/>گروه مهندسی کامپیوتر</div>
   <div class="rule"></div>
   <div class="kind">پروژهٔ کارشناسی</div>
-  <div class="title">ارزیابی تجربی لم منظمی سِمِرِدی<br/>در خوشه‌بندی مبتنی بر گراف</div>
-  <div class="sub">پیاده‌سازی و ارزیابی الگوریتم Hou و همکاران
-  (Pattern Recognition، ۲۰۲۶)</div>
+  <div class="title">طبقه‌بندی مبتنی بر گراف با<br/>استفاده از لم نظم زمردی<br/>(Szemerdi)</div>
   <div class="card">
     <b>دانشجو:</b> سید محمد فاطمی<br/>
     <b>استاد راهنما:</b> دکتر زینب مالکی<br/>

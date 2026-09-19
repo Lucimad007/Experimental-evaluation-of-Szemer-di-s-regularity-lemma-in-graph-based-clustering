@@ -67,12 +67,23 @@ vazir_faces = font_faces
 
 CSS = rf"""
 * {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-@page {{ size: A4; margin: 22mm 20mm 24mm 20mm; }}
+@page {{
+  size: A4;
+  margin: 25mm 25mm 28mm 25mm;
+  @bottom-center {{
+    content: none;
+  }}
+}}
+@page unnumbered {{
+  margin: 20mm 20mm 20mm 20mm;
+  @bottom-center {{ content: none; }}
+  @top-left {{ content: none; }}
+}}
 html {{ direction: rtl; }}
 body {{
   font-family: "B Nazanin", "Times New Roman", Vazirmatn, Tahoma, serif;
-  font-size: 13.5pt;
-  line-height: 1.95;
+  font-size: 13pt;
+  line-height: 1.9;
   color: #1a1a1a;
   text-align: justify;
 }}
@@ -82,7 +93,12 @@ body {{
   font-family: "Times New Roman", Cambria, Georgia, serif;
   font-size: 12pt; line-height: 1.6;
 }}
-.ltr p {{ margin: 0.5em 0; }}
+.ltr p {{
+  margin: 0.55em 0;
+  padding-left: 2.4em;
+  text-indent: -2.4em;
+  text-align: left;
+}}
 .ltr h1 {{ text-align: left; font-family: "Times New Roman", Cambria, serif; }}
 
 h1 {{
@@ -92,8 +108,7 @@ h1 {{
 h1.chapter {{
   page-break-before: always;
   margin-top: 0;
-  padding-top: 6mm;
-  border-top: 1.35pt solid {NAVY};
+  padding-top: 8mm;
 }}
 h2 {{
   font-size: 15.5pt; margin: 1em 0 0.3em; page-break-after: avoid; color: {NAVY};
@@ -103,9 +118,7 @@ p {{ margin: 0.42em 0; }}
 ul, ol {{ margin: 0.35em 0; padding-right: 1.35em; padding-left: 0; }}
 li {{ margin: 0.12em 0; }}
 hr {{
-  border: 0;
-  border-top: 0.9pt solid {GOLD};
-  margin: 1.5em 0 0.3em;
+  display: none;
 }}
 code, pre {{
   font-family: Consolas, "Courier New", monospace;
@@ -123,6 +136,7 @@ tr {{ page-break-inside: avoid; }}
 th, td {{ border: none; padding: 3px 4px; text-align: center; vertical-align: top; }}
 th {{ background: {NAVY}; color: #fff; font-weight: 600; }}
 td {{ background: #f7f7f7; }}
+td:first-child .math {{ font-size: 1.05em; }}
 td .math, th .math {{ font-size: 0.95em; }}
 blockquote {{
   background: #f7f5ef;
@@ -140,7 +154,12 @@ blockquote {{
   text-align: center;
   margin: 0.7em 0;
 }}
-a {{ color: {NAVY}; }}
+a {{ color: {NAVY}; text-decoration: underline; }}
+.ltr a {{
+  color: {NAVY};
+  text-decoration: underline;
+  word-break: break-all;
+}}
 img {{
   max-width: 100%; height: auto; display: block;
   margin: 0.9em auto 0.35em; page-break-inside: avoid;
@@ -152,58 +171,106 @@ p.caption {{
 }}
 
 .cover {{
+  page: unnumbered;
   page-break-after: always;
-  height: 243mm;
   box-sizing: border-box;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   justify-content: flex-start;
-  padding: 4mm 8mm 2mm;
+  padding: 6mm 16mm 10mm;
+  color: #000;
 }}
-.cover .bism {{ font-size: 15pt; color: {NAVY}; margin: 0 0 5mm; font-weight: 700; }}
-.cover img.logo {{ width: 40mm; height: auto; margin: 0 0 4mm 0; }}
-.cover .rule {{
-  width: 78%; height: 5mm; margin: 1mm 0 3mm;
+.cover img.logo {{
+  width: 28mm;
+  height: auto;
+  margin: 0 0 3mm;
+  display: block;
 }}
-.cover .uni {{ font-size: 20pt; font-weight: 800; color: {NAVY}; margin: 0.1em 0; }}
-.cover .fac {{ font-size: 14pt; margin: 0.1em 0 6mm; color: #243047; line-height: 1.6; }}
-.cover .kind {{
-  font-size: 14pt; font-weight: 700; color: #fff;
-  background: {NAVY};
-  padding: 0.3em 1.4em;
-  letter-spacing: 0.04em;
-  margin: 0 0 6mm;
-}}
+.cover .uni {{ font-size: 10pt; font-weight: 700; margin: 0 0 6mm; color: #000; }}
+.cover .fac {{ font-size: 14pt; font-weight: 400; margin: 0 0 14mm; color: #000; }}
 .cover .title {{
-  font-size: 19pt; font-weight: 800; line-height: 1.55;
-  color: {NAVY}; margin: 0 10mm 0.4em;
+  font-size: 16pt; font-weight: 700; line-height: 1.85;
+  color: #000; margin: 0 8mm 12mm;
 }}
-.cover .sub {{ font-size: 12.5pt; color: #3a3a3a; margin: 0 14mm 7mm; line-height: 1.6; }}
-.cover .card {{
-  width: 78%;
-  background: #fbfaf6;
-  padding: 4mm 6mm;
-  text-align: right;
-  font-size: 13.5pt;
-  line-height: 1.95;
-  color: #1a1a1a;
-}}
-.cover .card b {{ color: {NAVY}; }}
-.cover .year {{ font-size: 14pt; color: {NAVY}; margin-top: 7mm; font-weight: 700; }}
+.cover .kind {{ font-size: 16pt; font-weight: 400; margin: 0 0 14mm; color: #000; }}
+.cover .author {{ font-size: 12pt; font-weight: 700; margin: 0 0 14mm; color: #000; }}
+.cover .advisor-label {{ font-size: 14pt; font-weight: 400; margin: 0 0 4mm; color: #000; }}
+.cover .advisor {{ font-size: 12pt; font-weight: 700; margin: 0 0 14mm; color: #000; }}
+.cover .year {{ font-size: 10pt; font-weight: 700; margin: 0; padding-top: 0; color: #000; }}
 
-.toc {{ page-break-after: always; }}
-.toc > h1 {{
-  text-align: center; border-right: 0;
-  padding-right: 0; margin-top: 0;
+.rights {{
+  page: unnumbered;
+  page-break-after: always;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 220mm;
+  padding: 0 22mm;
+  color: #000;
 }}
-.toc ol {{ padding-right: 0.4em; list-style: none; }}
-.toc a {{ color: {NAVY}; text-decoration: none; }}
-.toc li {{ line-height: 1.6; }}
-.toc .h1 {{ font-weight: 700; margin: 0.4em 0 0.08em; font-size: 12.5pt; }}
-.toc .h2 {{ font-size: 11.5pt; margin: 0.05em 1.1em 0.05em 0; color: #333; font-weight: 400; }}
+.rights p {{
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 2.1;
+  margin: 0;
+}}
+
+.toc {{
+  page-break-before: always;
+  page-break-after: always;
+  font-size: 12pt;
+  color: #000;
+}}
+.toc > h1 {{
+  text-align: center;
+  border-right: 0;
+  padding-right: 0;
+  margin: 0 0 8mm;
+  font-size: 12pt;
+  font-weight: 700;
+  color: #000;
+}}
+.toc-head {{
+  display: flex;
+  justify-content: space-between;
+  font-size: 10pt;
+  font-weight: 700;
+  margin: 0 0 4mm;
+  color: #000;
+}}
+.toc ol {{ padding: 0; list-style: none; margin: 0; }}
+.toc a {{ color: #000; text-decoration: none; }}
+.toc li {{ margin: 0; padding: 0; }}
+.toc .row {{
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.35em;
+  line-height: 1.85;
+  font-size: 12pt;
+  font-weight: 400;
+}}
+.toc .h1 .row {{ font-weight: 700; font-size: 10pt; margin: 0.55em 0 0.1em; }}
+.toc .h2 .row {{ font-size: 12pt; font-weight: 400; margin: 0; padding-right: 0; }}
+.toc .toc-title {{ flex: 0 1 auto; max-width: 78%; }}
+.toc .toc-dots {{
+  flex: 1 1 auto;
+  border-bottom: 1px dotted #222;
+  height: 0.85em;
+  min-width: 8mm;
+}}
+.toc .toc-page {{
+  flex: 0 0 auto;
+  min-width: 1.6em;
+  text-align: left;
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}}
 """
 
 
@@ -465,9 +532,10 @@ def md_to_html(text: str) -> str:
         output_format="html5",
     )
     html = restore_math(html, blobs)
+    html = re.sub(r"<hr\s*/?>", "", html)
     html = inline_images(html)
     html = mark_captions(html)
-    html = wrap_ltr_sections(html, ("Abstract", "منابع"), ltr_heading=("Abstract",))
+    html = wrap_ltr_sections(html, ("مراجع",), ltr_heading=())
     html = mark_wide_tables(html)
     return html
 
@@ -542,7 +610,9 @@ def add_heading_ids(html: str) -> tuple[str, list[tuple[str, int, str]]]:
         plain = re.sub(r"\s+", " ", plain).strip()
         toc.append((tag, i, plain))
         extra = ""
-        if tag == "h1" and re.match(r"^(فصل|پیوست|منابع|چکیده|Abstract|فهرست)", plain):
+        if tag == "h1" and re.match(
+            r"^(فصل|پیوست|مراجع|واژه‌نامه|چکیده|فهرست)", plain
+        ):
             extra = ' class="chapter"'
         return f"<{tag} id=\"s{i}\"{extra}>{inner}</{tag}>"
 
@@ -550,33 +620,63 @@ def add_heading_ids(html: str) -> tuple[str, list[tuple[str, int, str]]]:
     return html, toc
 
 
+SKIP_TOC = {
+    "فهرست نمادها",
+}
+
+
 def toc_html(toc: list[tuple[str, int, str]]) -> str:
-    items = []
+    items = [
+        '<li class="h1"><div class="row">'
+        '<span class="toc-title">فهرست مطالب</span>'
+        '<span class="toc-dots"></span>'
+        '<span class="toc-page" data-self="toc"></span>'
+        "</div></li>"
+    ]
     for tag, i, text in toc:
+        if text in SKIP_TOC:
+            continue
         cls = "h1" if tag == "h1" else "h2"
-        items.append(f'<li class="{cls}"><a href="#s{i}">{text}</a></li>')
+        items.append(
+            f'<li class="{cls}"><a class="row" href="#s{i}">'
+            f'<span class="toc-title">{text}</span>'
+            f'<span class="toc-dots"></span>'
+            f'<span class="toc-page" data-target="s{i}"></span>'
+            f"</a></li>"
+        )
     return (
-        '<nav class="toc"><h1>فهرست مطالب</h1><ol>\n'
+        '<nav class="toc" id="toc"><h1>فهرست مطالب</h1>'
+        '<div class="toc-head"><span>عنوان</span><span>صفحه</span></div>\n'
+        "<ol>\n"
         + "\n".join(items)
         + "\n</ol></nav>"
     )
 
 
-def cover_html(logo_b64: str) -> str:
+def peel_leading_h1(html: str) -> tuple[str, str]:
+    m = re.match(r"(<h1[\s\S]*?</h1>[\s\S]*?)(?=<h1|\Z)", html)
+    if not m:
+        return "", html
+    return m.group(1), html[m.end() :]
+
+
+def front_html(logo_b64: str) -> str:
     return f"""
 <section class="cover">
-  <div class="bism">بسمه تعالی</div>
+  <img class="logo" alt="" src="data:image/png;base64,{logo_b64}"/>
   <div class="uni">دانشگاه صنعتی اصفهان</div>
-  <div class="rule"></div>
-  <div class="kind">پروژۀ کارشناسی</div>
-  <div class="title">ارزیابی تجربی لم منظمی سِمِرِدی<br/>در خوشه‌بندی مبتنی بر گراف</div>
-  <div class="sub">پیاده‌سازی و ارزیابی مقالۀ منتشرشده در سال ۲۰۲۶</div>
-  <div class="card">
-    <b>دانشجو:</b> سید محمد فاطمی<br/>
-    <b>استاد راهنما:</b> دکتر زینب مالکی<br/>
-    دانشیار، دانشکده مهندسی برق و کامپیوتر
-  </div>
-  <div class="year">۱۴۰۵ هجری شمسی</div>
+  <div class="fac">دانشکده مهندسی برق و کامپیوتر</div>
+  <div class="title">طبقه‌بندی مبتنی بر گراف با<br/>استفاده از لم نظم زمردی<br/>(Szemerdi)</div>
+  <div class="kind">پروژه کارشناسی مهندسی کامپیوتر</div>
+  <div class="author">سید محمد فاطمی</div>
+  <div class="advisor-label">استاد راهنما</div>
+  <div class="advisor">دکتر زینب مالکی</div>
+  <div class="year">۱۴۰۵</div>
+</section>
+<section class="rights">
+  <p>کلیه حقوق مادی مترتب بر نتایج مطالعات،<br/>
+  ابتکارات و نوآوری‌های ناشی از تحقیق موضوع<br/>
+  این پژوهش متعلق به دانشگاه صنعتی اصفهان است.</p>
 </section>
 """
 
@@ -584,6 +684,119 @@ def cover_html(logo_b64: str) -> str:
 def normalize_persian_for_pdf(text: str) -> str:
     # B Nazanin often fails on ه + combining hamza (U+0654); use ۀ (U+06C0) like the rest of the thesis.
     return text.replace("\u0647\u0654", "\u06c0")
+
+
+def _fa_digits(n: int) -> str:
+    return str(n).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
+
+
+def _norm_txt(s: str) -> str:
+    import unicodedata
+
+    s = unicodedata.normalize("NFKC", s)
+    return re.sub(r"\s+", "", s).replace("\u200c", "")
+
+
+def fill_toc_page_numbers(html: str, pdf_path: Path) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return html
+    reader = PdfReader(str(pdf_path))
+    pages = [_norm_txt(p.extract_text() or "") for p in reader.pages]
+    toc_idxs = [
+        i
+        for i, t in enumerate(pages)
+        if "فهرستمطالب" in t or "عنوانصفحه" in t
+    ]
+    toc_page = (toc_idxs[0] + 1) if toc_idxs else 2
+    body_start = next(
+        (i for i, t in enumerate(pages) if "مسئلهاینپروژه" in t),
+        (toc_idxs[-1] + 1) if toc_idxs else 2,
+    )
+    after_toc = body_start
+    html = re.sub(
+        r'(<span class="toc-page" data-self="toc">)(</span>)',
+        rf"\g<1>{_fa_digits(toc_page)}\2",
+        html,
+        count=1,
+    )
+    last = after_toc + 1  # 1-based
+
+    def repl(m: re.Match) -> str:
+        nonlocal last
+        title = m.group(1)
+        target = m.group(2)
+        plain = re.sub(r"<[^>]+>", "", title)
+        plain = re.sub(r"^[۰-۹]+-[۰-۹]+\s*", "", plain)
+        needle = re.sub(r"[\u064b-\u065f]", "", _norm_txt(plain))[:16]
+        page_no = last
+        if needle:
+            for i in range(last - 1, len(pages)):
+                blob = re.sub(r"[\u064b-\u065f]", "", pages[i])
+                if needle in blob:
+                    page_no = i + 1
+                    last = page_no
+                    break
+        return (
+            f'<span class="toc-title">{title}</span>'
+            f'<span class="toc-dots"></span>'
+            f'<span class="toc-page" data-target="{target}">{_fa_digits(page_no)}</span>'
+        )
+
+    return re.sub(
+        r'<span class="toc-title">(.*?)</span>\s*'
+        r'<span class="toc-dots"></span>\s*'
+        r'<span class="toc-page" data-target="([^"]+)"></span>',
+        repl,
+        html,
+        flags=re.S,
+    )
+
+
+def stamp_fa_page_numbers(pdf_path: Path, skip: int = 2) -> None:
+    """Draw Eastern Arabic page numbers; Chrome cannot print counter(page, farsi)."""
+    from io import BytesIO
+
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.pdfgen import canvas
+
+    font = find_bnazanin()
+    if font is None:
+        raise FileNotFoundError("B Nazanin is required to stamp Persian page numbers")
+    pdfmetrics.registerFont(TTFont("BNazanin", str(font)))
+    reader = PdfReader(str(pdf_path))
+    writer = PdfWriter()
+    writer.append(reader)
+    for i, page in enumerate(writer.pages):
+        if i < skip:
+            continue
+        w = float(page.mediabox.width)
+        buf = BytesIO()
+        c = canvas.Canvas(buf, pagesize=(w, float(page.mediabox.height)))
+        c.setFont("BNazanin", 11)
+        c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.drawCentredString(w / 2.0, 32, _fa_digits(i + 1))
+        c.save()
+        stamp = PdfReader(buf)
+        page.merge_page(stamp.pages[0])
+    out = pdf_path.with_suffix(".stamped.pdf")
+    with out.open("wb") as f:
+        writer.write(f)
+    out.replace(pdf_path)
+
+
+def print_pdf(html_path: Path, pdf_path: Path) -> None:
+    printer = ROOT / "scripts" / "_print_pdf.mjs"
+    if pdf_path.exists():
+        pdf_path.unlink()
+    subprocess.run(
+        ["node", str(printer), str(html_path.resolve()), str(pdf_path.resolve())],
+        check=True,
+        cwd=str(ROOT / "scripts"),
+    )
 
 
 def main() -> None:
@@ -600,7 +813,7 @@ def main() -> None:
 {CSS}</style>
 </head>
 <body>
-{cover_html(logo_b64)}
+{front_html(logo_b64)}
 {toc_html(toc)}
 {body}
 </body>
@@ -608,14 +821,12 @@ def main() -> None:
 """
     HTML.write_text(html, encoding="utf-8")
     tmp = PDF.with_name("THESIS_FA.new.pdf")
-    if tmp.exists():
-        tmp.unlink()
-    printer = ROOT / "scripts" / "_print_pdf.mjs"
-    subprocess.run(
-        ["node", str(printer), str(HTML.resolve()), str(tmp.resolve()), "--page-numbers"],
-        check=True,
-        cwd=str(ROOT / "scripts"),
-    )
+    print_pdf(HTML, tmp)
+    filled = fill_toc_page_numbers(html, tmp)
+    if filled != html:
+        HTML.write_text(filled, encoding="utf-8")
+        print_pdf(HTML, tmp)
+    stamp_fa_page_numbers(tmp)
     if PDF.exists():
         try:
             PDF.unlink()
