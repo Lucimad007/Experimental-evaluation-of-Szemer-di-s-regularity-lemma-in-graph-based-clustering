@@ -220,7 +220,7 @@ def tf(slide, l, t, w, h):
     return frame
 
 
-def write(frame, lines, size=20, bold=False, color=INK, space=8, align="r"):
+def write(frame, lines, size=20, bold=False, color=INK, space=8, align="r", bullet=False):
     first = True
     for line in lines:
         p = frame.paragraphs[0] if first else frame.add_paragraph()
@@ -236,6 +236,12 @@ def write(frame, lines, size=20, bold=False, color=INK, space=8, align="r"):
             use = "l"
         _p(p, use)
         p.space_after = Pt(space)
+        if bullet:
+            pPr = p._p.get_or_add_pPr()
+            bu_font = etree.SubElement(pPr, qn("a:buFont"))
+            bu_font.set("typeface", "Calibri")
+            bu_char = etree.SubElement(pPr, qn("a:buChar"))
+            bu_char.set("char", "•")
         add_mixed(p, line, size=size, bold=bold, color=color)
 
 
@@ -252,13 +258,10 @@ def chrome(prs, slide, title: str, page: int, kicker: str = ""):
     paper_bg(prs, slide)
     bar = box(slide, Inches(0.45), Inches(0.28), Inches(12.45), Inches(0.92), PANEL, rounded=True)
     shadow(bar, blur=0.22, dist=0.05, alpha=16)
-    kicker = kicker or "دفاع کارشناسی"
-    f = tf(slide, Inches(0.7), Inches(0.32), W - Inches(1.6), Inches(0.28))
-    write(f, [kicker], size=12, color=ACCENT, space=0)
-    f = tf(slide, Inches(0.7), Inches(0.55), W - Inches(1.6), Inches(0.55))
+    f = tf(slide, Inches(0.7), Inches(0.42), W - Inches(1.6), Inches(0.62))
     write(f, [title], size=26, bold=True, color=NAVY, space=0)
     f = tf(slide, Inches(0.55), H - Inches(0.38), Inches(8.5), Inches(0.28))
-    write(f, ["سید محمد فاطمی  |  دکتر زینب مالکی"], size=11, color=MUTED, space=0)
+    write(f, ["خوشه‌بندی گرافی با لم نظم زمردی"], size=11, color=MUTED, space=0)
     chip = box(slide, W - Inches(1.55), H - Inches(0.42), Inches(0.95), Inches(0.28), NAVY, rounded=True)
     f = tf(slide, W - Inches(1.55), H - Inches(0.44), Inches(0.95), Inches(0.28))
     write(f, [str(page).translate(FA_DIGITS)], size=11, color=WHITE, space=0, align="c")
@@ -269,41 +272,41 @@ def add_picture_fit(slide, path: Path, l, t, w, h):
         f = tf(slide, l, t, w, Inches(0.5))
         write(f, [f"شکل پیدا نشد: {path.name}"], size=16, color=MUTED, space=0)
         return
-    pic = slide.shapes.add_picture(str(path), l, t, width=w)
-    if pic.height > h:
-        ratio = h / pic.height
-        pic.height = h
-        pic.width = int(pic.width * ratio)
-        pic.left = int(l + (w - pic.width) / 2)
+    pic = slide.shapes.add_picture(str(path), l, t)
+    nat_w, nat_h = int(pic.width), int(pic.height)
+    scale = min(w / nat_w, h / nat_h)
+    pic.width = int(nat_w * scale)
+    pic.height = int(nat_h * scale)
+    pic.left = int(l + (w - pic.width) / 2)
+    pic.top = int(t + (h - pic.height) / 2)
 
 
-def fig_slide(prs, slides, title, path, caption="", kicker="شکل"):
+def fig_slide(prs, slides, title, path, caption="", kicker="شکل", big=False):
     sl = new(prs)
     slides.append(sl)
     chrome(prs, sl, title, len(slides), kicker=kicker)
-    cap_h = 0.85 if caption else 0
-    shell = box(sl, Inches(0.5), Inches(1.38), Inches(12.35), Inches(5.62 - cap_h), SHELL, rounded=True)
-    shadow(shell, blur=0.4, dist=0.12, alpha=26)
-    box(
-        sl,
-        Inches(0.62),
-        Inches(1.5),
-        Inches(12.11),
-        Inches(5.38 - cap_h),
-        PANEL,
-        rounded=True,
-    )
+    lines = list(caption) if isinstance(caption, (list, tuple)) else ([caption] if caption else [])
+    pic_w = 9.15 if big else 8.05
+    shell = box(sl, Inches(0.36), Inches(1.28), Inches(pic_w), Inches(5.7), SHELL, rounded=True)
+    shadow(shell, blur=0.22, dist=0.06, alpha=16)
+    box(sl, Inches(0.46), Inches(1.38), Inches(pic_w - 0.2), Inches(5.5), PANEL, rounded=True)
     add_picture_fit(
         sl,
         path,
-        Inches(0.9),
-        Inches(1.62),
-        Inches(11.55),
-        Inches(4.95 - cap_h),
+        Inches(0.58),
+        Inches(1.48),
+        Inches(pic_w - 0.44),
+        Inches(5.3),
     )
-    if caption:
-        f = tf(sl, Inches(0.55), Inches(6.25), Inches(12.2), Inches(0.7))
-        write(f, [caption], size=18, color=INK, space=0)
+    if lines:
+        text_x = 0.36 + pic_w + 0.16
+        text_w = 13.0 - text_x
+        card = box(sl, Inches(text_x), Inches(1.28), Inches(text_w), Inches(5.7), PANEL, rounded=True)
+        shadow(card, blur=0.22, dist=0.06, alpha=16)
+        box(sl, Inches(12.74), Inches(1.28), Inches(0.1), Inches(5.7), ACCENT)
+        f = tf(sl, Inches(text_x + 0.18), Inches(1.48), Inches(text_w - 0.42), Inches(5.3))
+        f._txBody.find(qn("a:bodyPr")).set("anchor", "ctr")
+        write(f, lines, size=18, color=INK, space=12, bullet=True)
     return sl
 
 
@@ -384,191 +387,198 @@ def build() -> Path:
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "مشکل، و راه لم", len(slides), kicker="افتتاح")
-    numbered(
-        sl,
-        [
-            "مشکل اصلی خوشه‌بندی مبتنی بر گراف، بار محاسباتی گراف شباهت است. هر نمونه یک رأس است و شباهت‌ها یال می‌شوند، و این گراف خیلی زود سنگین می‌شود.",
-            "کارهای قبلی نشان داده‌اند لم نظم زمردی می‌تواند این بار را کم کند.",
-            "با این لم، گراف اصلی افراز می‌شود و از روی آن یک گراف کوچک ساخته می‌شود. این گراف کوچک ساختار اصلی را نگه می‌دارد، ولی تعداد رأس‌هایش خیلی کمتر است.",
-            "خوشه‌بندی روی گراف کوچک انجام می‌شود و برچسب‌ها به گراف اصلی برمی‌گردند. به این ترتیب حجم محاسبه به‌طور محسوس کم می‌شود.",
-        ],
-    )
-
-    sl = new(prs)
-    slides.append(sl)
-    chrome(prs, sl, "مقاله چه نشان داد", len(slides), kicker="افتتاح")
-    numbered(
-        sl,
-        [
-            "پارامترهای این روش روی نتیجه اثر جدی دارند و کارهای قبلی به این اثر نپرداخته بودند.",
-            "مقاله این اثر را با چهار الگوریتم شناخته‌شده و تعداد زیادی دادهٔ واقعی بررسی کرد.",
-            "بازهٔ مناسب پارامترها هم دقت خوشه‌بندی را بالا می‌برد و هم محاسبه را سبک‌تر می‌کند.",
-            "افراز لم از افراز معمولی k-means بهتر است. الگوریتم‌های نسبتاً قدیمی، با همین لم، از روش‌های جدیدتر جلو می‌زنند. یعنی لم از یک قضیهٔ نظری به یک ابزار عملی برای خوشه‌بندی آمده است.",
-        ],
-    )
-
-    fig_slide(
-        prs,
-        slides,
-        "هر نمونه یک رأس",
-        FIG / "concept_vertices.png",
-        "هر سطر یک نمونه است و سه نقطهٔ خاکستری، سه ویژگی آن نمونه‌اند. همان سطر، با همان رنگ، یک دایره در گراف می‌شود. هنوز خطی بین دایره‌ها نیست.",
-        kicker="از جدول تا گراف",
-    )
-
-    fig_slide(
-        prs,
-        slides,
-        "شباهت، وزن یال است",
-        FIG / "concept_edges.png",
-        "دو نمونهٔ شبیه، یال کلفت می‌گیرند. دو نمونهٔ دور، یال نازک یا هیچ. رنگ و ضخامت یعنی شدت شباهت، نه یک یال صفر و یک.",
-        kicker="از جدول تا گراف",
-    )
-
-    fig_slide(
-        prs,
-        slides,
-        "جدول واقعی همین مسیر را می‌رود",
-        FIG / "fig_from_table_to_graph.png",
-        "ویژگی‌ها اول هم‌مقیاس می‌شوند، بعد شباهت حساب می‌شود، بعد گراف ساخته می‌شود. این گراف، ورودی هر دو راه آزمایش است.",
-        kicker="از جدول تا گراف",
-    )
-
-    fig_slide(
-        prs,
-        slides,
-        "چرا گراف اصلی سنگین است",
-        FIG / "concept_heavy_graph.png",
-        "چپ گراف شلوغ است. وسط همان رأس‌ها در چهار گروه جدا قرار می‌گیرند. راست هر گروه یک رأس شده و ضخامت خط، شدت ارتباط دو گروه است.",
-        kicker="انگیزه",
-    )
-
-    sl = new(prs)
-    slides.append(sl)
-    chrome(prs, sl, "لم در سه حرکت", len(slides), kicker="لم")
-    moves = [
-        ("حرکت ۱", "گروه‌بندی", "رأس‌ها به چند گروه تقریباً هم‌اندازه تقسیم می‌شوند.", FIG / "concept_partition.png"),
-        ("حرکت ۲", "یک عدد به‌جای یال‌ها", "بین دو گروه فقط چگالی ارتباط می‌ماند.", FIG / "concept_density.png"),
-        ("حرکت ۳", "گراف کوچک", "هر گروه یک رأس می‌شود و خوشه‌بندی همان‌جا انجام می‌شود.", FIG / "concept_reduced.png"),
+    chrome(prs, sl, "اهمیت و بیان مسئله", len(slides), kicker="مسئله")
+    lines = [
+        "خیلی از داده‌ها برچسب آماده ندارند. خوشه‌بندی برای همین مهم است: نمونه‌های شبیه باید خودشان یک گروه شوند، مثل مشتری‌های هم‌سلیقه یا تصویرهای هم‌خانواده.",
+        "یک راه جاافتاده برای دیدن این شباهت، ساختن گراف است. هر نمونه یک رأس می‌شود و یال میان دو رأس می‌گوید چقدر به هم نزدیک‌اند.",
+        "گرهٔ کار از همین‌جا شروع می‌شود. همین که تعداد نمونه‌ها بالا برود، گرافی که همسایگی را نشان می‌داد دیگر در حافظه و زمان جا نمی‌شود.",
     ]
-    gap = 0.22
-    width = (12.3 - gap * 2) / 3
-    for i, (kick, title, body, path) in enumerate(moves):
-        x = 0.5 + (2 - i) * (width + gap)
-        card = box(sl, Inches(x), Inches(1.5), Inches(width), Inches(5.15), PANEL, rounded=True)
-        shadow(card, blur=0.28, dist=0.08, alpha=18)
-        box(sl, Inches(x), Inches(1.5), Inches(width), Inches(0.1), ACCENT if i == 0 else NAVY)
-        f = tf(sl, Inches(x + 0.2), Inches(1.68), Inches(width - 0.4), Inches(0.28))
-        write(f, [kick], size=13, color=ACCENT, space=0)
-        f = tf(sl, Inches(x + 0.2), Inches(1.96), Inches(width - 0.4), Inches(0.55))
-        write(f, [title], size=20, bold=True, color=NAVY, space=0)
-        add_picture_fit(sl, path, Inches(x + 0.18), Inches(2.6), Inches(width - 0.36), Inches(2.55))
-        f = tf(sl, Inches(x + 0.2), Inches(5.25), Inches(width - 0.4), Inches(1.2))
-        write(f, [body], size=15, color=INK, space=0)
+    card = box(sl, Inches(6.35), Inches(1.36), Inches(6.45), Inches(5.55), PANEL, rounded=True)
+    shadow(card, blur=0.28, dist=0.08, alpha=18)
+    box(sl, Inches(12.7), Inches(1.36), Inches(0.1), Inches(5.55), ACCENT)
+    f = tf(sl, Inches(6.6), Inches(1.55), Inches(5.9), Inches(5.15))
+    write(f, lines, size=20, color=INK, space=16)
+    shell = box(sl, Inches(0.48), Inches(1.36), Inches(5.65), Inches(5.55), SHELL, rounded=True)
+    shadow(shell, blur=0.28, dist=0.08, alpha=18)
+    box(sl, Inches(0.62), Inches(1.5), Inches(5.37), Inches(5.27), PANEL, rounded=True)
+    add_picture_fit(sl, FIG / "concept_why_graph.png", Inches(0.95), Inches(1.85), Inches(4.7), Inches(4.55))
+
+    sl = new(prs)
+    slides.append(sl)
+    chrome(prs, sl, "چالش‌ها", len(slides), kicker="مسئله")
+    lines = [
+        "برای هر دو نمونه یک عدد شباهت حساب می‌شود و همهٔ این عددها باید بمانند.",
+        "با n نمونه، تعداد این عددها از مرتبهٔ n² است؛ حافظه خیلی زود پر می‌شود.",
+        "بخش بزرگی از الگوریتم‌های خوشه‌بندی گرافی زمانی نزدیک n³ دارند.",
+        "مثلاً برای حدود یازده هزار نمونه، ماتریس شباهت نزدیک صد و بیست میلیون خانه دارد.",
+    ]
+    card = box(sl, Inches(6.35), Inches(1.36), Inches(6.45), Inches(5.55), PANEL, rounded=True)
+    shadow(card, blur=0.28, dist=0.08, alpha=18)
+    box(sl, Inches(12.7), Inches(1.36), Inches(0.1), Inches(5.55), ACCENT)
+    f = tf(sl, Inches(6.6), Inches(1.7), Inches(5.9), Inches(4.9))
+    write(f, lines, size=20, color=INK, space=14, bullet=True)
+    shell = box(sl, Inches(0.48), Inches(1.36), Inches(5.65), Inches(5.55), SHELL, rounded=True)
+    shadow(shell, blur=0.28, dist=0.08, alpha=18)
+    box(sl, Inches(0.62), Inches(1.5), Inches(5.37), Inches(5.27), PANEL, rounded=True)
+    add_picture_fit(sl, FIG / "concept_similarity_matrix.png", Inches(0.95), Inches(1.85), Inches(4.7), Inches(4.55))
+
+    sl = new(prs)
+    slides.append(sl)
+    chrome(prs, sl, "متودولوژی", len(slides), kicker="لم")
+    lines = [
+        "گراف شباهت یک بار ساخته می‌شود. هر دو راه آزمایش از همین گراف شروع می‌کنند.",
+        "راه پایه: همان الگوریتم، مستقیم روی گراف اصلی.",
+        "راه لم: تقسیم رأس‌ها به گروه‌های هم‌اندازه، خلاصهٔ رابطهٔ گروه‌ها با یک چگالی، بعد خوشه‌بندی روی گراف کوچک.",
+        "برچسب گراف کوچک به نمونه‌ها برمی‌گردد. کیفیت هر دو راه با NMI و برچسب واقعی سنجیده می‌شود.",
+    ]
+    card = box(sl, Inches(6.35), Inches(1.36), Inches(6.45), Inches(5.55), PANEL, rounded=True)
+    shadow(card, blur=0.28, dist=0.08, alpha=18)
+    box(sl, Inches(12.7), Inches(1.36), Inches(0.1), Inches(5.55), ACCENT)
+    f = tf(sl, Inches(6.6), Inches(1.7), Inches(5.9), Inches(4.9))
+    write(f, lines, size=18, color=INK, space=12, bullet=True)
+    shell = box(sl, Inches(0.48), Inches(1.36), Inches(5.65), Inches(5.55), SHELL, rounded=True)
+    shadow(shell, blur=0.28, dist=0.08, alpha=18)
+    box(sl, Inches(0.62), Inches(1.5), Inches(5.37), Inches(5.27), PANEL, rounded=True)
+    add_picture_fit(sl, FIG / "concept_why_lemma.png", Inches(0.95), Inches(1.85), Inches(4.7), Inches(4.55))
 
     fig_slide(
         prs,
         slides,
-        "حرکت اول: گروه‌بندی",
+        "قدم اول: گروه‌های هم‌اندازه",
         FIG / "concept_partition.png",
-        "چهار گروه تقریباً هم‌اندازه. نقطه‌های خاکستری کنار تصویر، رأس‌هایی‌اند که در هیچ گروه تمیزی جا نگرفته‌اند و کنار گذاشته می‌شوند.",
+        [
+            "لم اول رأس‌ها را به چند گروه تقریباً هم‌اندازه تقسیم می‌کند.",
+            "لکه‌های رنگی همین گروه‌ها هستند.",
+            "نقطه‌های خاکستری در هیچ گروه تمیزی جا نشده‌اند.",
+            "آن ته مانده را مجموعهٔ استثنایی می‌نامند.",
+        ],
         kicker="لم",
     )
 
     fig_slide(
         prs,
         slides,
-        "گروه منظم یعنی ارتباط یکنواخت",
+        "جفت منظم: یال‌ها یکنواخت‌اند",
         FIG / "concept_regular.png",
-        "بین این دو گروه، یال‌ها همه‌جا تقریباً مثل هم‌اند. هر تکه از گروه چپ، با هر تکه از گروه راست، همان قدر رابطه دارد.",
+        [
+            "منظم بودن دربارهٔ یال بین دو گروه است، نه داخل هر گروه.",
+            "باید زیرمجموعه‌های به‌قدر کافی بزرگ را هم چک کرد، نه تکه‌های خیلی کوچک را.",
+            "حد اندازه، کسری از خود گروه است. از آن حد به بعد، چگالی هر دو زیرمجموعه باید نزدیک چگالی کل بماند.",
+            "اگر این طور باشد، یک عدد چگالی کل رابطه را خلاصه می‌کند.",
+        ],
         kicker="لم",
     )
 
     fig_slide(
         prs,
         slides,
-        "گروه نامنظم یعنی یک جا شلوغ و یک جا خالی",
+        "جفت نامنظم: یک عدد کافی نیست",
         FIG / "concept_irregular.png",
-        "بالای تصویر پر از یال است و پایین تقریباً خالی. اینجا یک عدد میانگین، رابطه را درست خلاصه نمی‌کند. لم این جفت را نامنظم حساب می‌کند.",
+        [
+            "اینجا بالای تصویر پر از یال است و پایین تقریباً خالی.",
+            "میانگین، این تفاوت را پنهان می‌کند.",
+            "لم چنین جفتی را نامنظم می‌گیرد و باید بعداً بریده شود.",
+        ],
         kicker="لم",
     )
 
     fig_slide(
         prs,
         slides,
-        "همین تفاوت، روی یک شکل",
+        "اپسیلون، مرز منظم و نامنظم",
         FIG / "fig_eps_regular_pair.png",
-        "چپ منظم است و راست نامنظم. اپسیلون میزان مجاز همین تفاوت است: اگر اختلاف از آن حد کمتر باشد، جفت را منظم می‌گیریم.",
+        [
+            "چپ جفت منظم است: چگالی تقریباً ثابت و نزدیک d.",
+            "راست جفت نامنظم است: یک تکه شلوغ و بقیه خلوت.",
+            "اپسیلون هم حد اختلاف چگالی است و هم کف اندازهٔ زیرمجموعه.",
+            "زیرمجموعهٔ کوچک‌تر از این کف کنار گذاشته می‌شود. بزرگ‌تر از آن، باید چگالی‌اش نزدیک چگالی کل بماند.",
+        ],
         kicker="لم",
+        big=True,
     )
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "سه certificate", len(slides), kicker="افراز")
+    chrome(prs, sl, "چطور جفت نامنظم را پیدا می‌کنیم", len(slides), kicker="افراز")
     cards = [
-        ("Alon 1", "یال کم، یعنی منظم", FIG / "concept_alon1.png"),
-        ("Alon 3", "تودهٔ همسایهٔ مشترک", FIG / "concept_alon3.png"),
-        ("Alon 2", "درجهٔ پرت", FIG / "concept_alon2.png"),
+        ("آزمون ۱", "یال خیلی کم، جفت منظم است", "اگر میانگین یال بین دو گروه از حدی کمتر باشد، جفت را منظم می‌گیریم. گراف خالی هم منظم است.", FIG / "concept_alon1.png"),
+        ("آزمون ۳", "همسایهٔ مشترکِ زیاد", "اگر دسته‌ای از رأس‌ها همسایه‌های خیلی شبیه داشته باشند، همان دسته شاهد نامنظمی است.", FIG / "concept_alon3.png"),
+        ("آزمون ۲", "درجهٔ خیلی دور از میانگین", "رأس‌هایی که درجه‌شان از میانگین خیلی پرت است جمع می‌شوند. اگر تعدادشان زیاد باشد، certificate همان‌هاست.", FIG / "concept_alon2.png"),
     ]
     gap = 0.22
     width = (12.3 - gap * 2) / 3
-    for i, (kick, title, path) in enumerate(cards):
+    for i, (kick, title, body, path) in enumerate(cards):
         x = 0.5 + (2 - i) * (width + gap)
         card = box(sl, Inches(x), Inches(1.5), Inches(width), Inches(5.15), PANEL, rounded=True)
         shadow(card, blur=0.28, dist=0.08, alpha=18)
         box(sl, Inches(x), Inches(1.5), Inches(width), Inches(0.1), ACCENT if i == 0 else NAVY)
         f = tf(sl, Inches(x + 0.18), Inches(1.7), Inches(width - 0.36), Inches(0.32))
         write(f, [kick], size=14, color=ACCENT, space=0)
-        f = tf(sl, Inches(x + 0.18), Inches(2.05), Inches(width - 0.36), Inches(0.7))
-        write(f, [title], size=20, bold=True, color=NAVY, space=0)
-        add_picture_fit(sl, path, Inches(x + 0.15), Inches(2.85), Inches(width - 0.3), Inches(3.4))
+        f = tf(sl, Inches(x + 0.18), Inches(2.02), Inches(width - 0.36), Inches(0.7))
+        write(f, [title], size=18, bold=True, color=NAVY, space=0)
+        f = tf(sl, Inches(x + 0.18), Inches(2.7), Inches(width - 0.36), Inches(1.25))
+        write(f, [body], size=14, color=INK, space=0)
+        add_picture_fit(sl, path, Inches(x + 0.32), Inches(4.05), Inches(width - 0.64), Inches(2.25))
+
+    fig_slide(
+        prs,
+        slides,
+        "برش گروه، داخل ساخت افراز",
+        FIG / "concept_refine.png",
+        [
+            "جای این کار در راه لم، بعد از آزمون جفت‌ها و قبل از ساخت گراف کوچک است.",
+            "هنوز خوشه‌بندی نیست. گروه نامنظم دو تکه می‌شود تا بشود یال‌ها را با یک چگالی عوض کرد.",
+            "تکهٔ قرمز همان certificate است و از گروه جدا می‌شود. بقیهٔ گروه سر جایش می‌ماند.",
+            "خرده‌هایی که به هیچ تکه‌ای نمی‌خورند به مجموعهٔ استثنایی می‌روند.",
+        ],
+        kicker="افراز",
+    )
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "سه اصلاح مقاله", len(slides), kicker="افراز")
+    chrome(prs, sl, "سه اصلاح مقاله روی همین افراز", len(slides), kicker="افراز")
     numbered(
         sl,
         [
-            "هر گروه حداکثر با یک گروه دیگر نامنظم شمرده می‌شود. بدون این محدودیت، تعداد گروه‌ها در هر دور انفجاری زیاد می‌شد.",
-            "certificate با روش درجهٔ Fiorucci ساخته می‌شود، نه با جست‌وجوی کامل روش اصلی.",
-            "وقتی اندازهٔ گروه‌ها به‌قدر کافی کوچک شد، حلقه متوقف می‌شود. خروجی تقریباً منظم است، نه منظمِ اثبات‌شده.",
+            "هر گروه حداکثر با یک گروه دیگر نامنظم حساب می‌شود. بدون این قید، تعداد گروه‌ها در هر دور چند برابر می‌شود.",
+            "تکهٔ نامنظم با روش درجهٔ Fiorucci پیدا می‌شود، نه با جست‌وجوی کامل نسخهٔ اصلی Alon.",
+            "وقتی گروه‌ها به‌قدر کافی کوچک شدند، حلقه می‌ایستد. نتیجه تقریباً منظم است، نه یک افراز اثبات‌شده.",
         ],
     )
 
     fig_slide(
         prs,
         slides,
-        "refinement یعنی بریدن گروه",
-        FIG / "concept_refine.png",
-        "چپ، تکهٔ قرمز certificate است و هنوز داخل همان گروه. راست، همان تکه جدا شده و بقیه گروه خودش مانده. نقطه‌های خاکستری خرده‌هایی‌اند که به مجموعهٔ استثنایی می‌روند.",
-        kicker="افراز",
-    )
-
-    fig_slide(
-        prs,
-        slides,
-        "حرکت دوم: یک عدد به‌جای همهٔ یال‌ها",
+        "از یال‌های بین دو گروه تا یک چگالی",
         FIG / "concept_density.png",
-        "چپ، همهٔ یال‌های بین دو گروه است. راست، همان رابطه با یک میله. ضخامت میله یعنی چگالی: سهم یال‌های موجود از همهٔ یال‌های ممکن.",
+        [
+            "چپ، همهٔ یال‌های بین دو گروه را نشان می‌دهد.",
+            "راست، همان رابطه فقط با یک میله مانده است.",
+            "ضخامت میله یعنی چگالی: سهم یال‌های موجود از همهٔ یال‌های ممکن.",
+        ],
         kicker="لم",
     )
 
     fig_slide(
         prs,
         slides,
-        "حرکت سوم: گراف کوچک",
+        "گراف کوچک: هر گروه یک رأس",
         FIG / "concept_reduced.png",
-        "هر گروه با فلش به رأس هم‌رنگ خودش می‌رود. ضخامت یال بین رأس‌های بزرگ، چگالی همان دو گروه است. گراف کوچک معمولاً ۱۶ تا ۶۴ رأس دارد.",
+        [
+            "هر گروه با فلش به یک رأس هم‌رنگ تبدیل می‌شود.",
+            "آن رأس نمایندهٔ همهٔ نمونه‌های گروه است.",
+            "ضخامت یال بین دو رأس، همان چگالی دو گروه است.",
+            "خوشه‌بندی از اینجا به بعد روی همین گراف کوچک انجام می‌شود.",
+        ],
         kicker="لم",
     )
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "دو راه، از یک گراف", len(slides), kicker="pipeline")
+    chrome(prs, sl, "همان گراف، یک بار مستقیم و یک بار با لم", len(slides), kicker="pipeline")
     paths = [
-        ("راه مستقیم", "همان گراف را همان‌جا رنگ می‌کنیم. هر رنگ یک خوشه است.", FIG / "concept_path_direct.png"),
-        ("راه لم", "اول دو رأس بزرگ. بعد همان رنگ به همان نقطه‌ها برمی‌گردد.", FIG / "concept_path_lemma.png"),
+        ("راه پایه", "خوشه‌بندی مستقیم روی گراف اصلی. رنگ هر رأس همان خوشهٔ اوست.", FIG / "concept_path_direct.png"),
+        ("راه لم", "رأس‌های زیاد به ۴ رأس کوچک می‌شوند. خوشه‌بندی روی همین گراف چهار رأسی انجام می‌شود.", FIG / "concept_path_lemma.png"),
     ]
     for i, (title, body, path) in enumerate(paths):
         x = 0.45 + (1 - i) * 6.45
@@ -577,31 +587,40 @@ def build() -> Path:
         box(sl, Inches(x), Inches(1.48), Inches(6.2), Inches(0.1), ACCENT if i == 0 else NAVY)
         f = tf(sl, Inches(x + 0.25), Inches(1.68), Inches(5.7), Inches(0.45))
         write(f, [title], size=22, bold=True, color=NAVY, space=0)
-        add_picture_fit(sl, path, Inches(x + 0.35), Inches(2.2), Inches(5.5), Inches(3.15))
-        f = tf(sl, Inches(x + 0.25), Inches(5.5), Inches(5.7), Inches(0.95))
+        add_picture_fit(sl, path, Inches(x + 0.35), Inches(2.15), Inches(5.5), Inches(3.55))
+        f = tf(sl, Inches(x + 0.25), Inches(5.75), Inches(5.7), Inches(0.8))
         write(f, [body], size=16, color=INK, space=0)
 
     fig_slide(
         prs,
         slides,
-        "برگرداندن برچسب",
+        "برگرداندن خوشه به تک‌تک نمونه‌ها",
         FIG / "concept_lift.png",
-        "خوشه روی گراف کوچک به هر گروه یک رنگ می‌دهد. همهٔ نمونه‌های داخل آن گروه همان رنگ را می‌گیرند. خروجی نهایی باز هم برچسبِ تک‌تک نمونه‌هاست.",
+        [
+            "خوشه‌بندی فقط به رأس‌های گراف کوچک رنگ داده است.",
+            "هر نمونه، رنگ رأس گروهی را می‌گیرد که عضو آن است.",
+            "پس خروجی باز هم یک برچسب برای هر نمونهٔ اصلی است.",
+        ],
         kicker="pipeline",
     )
 
     fig_slide(
         prs,
         slides,
-        "مسیر کار این پروژه",
+        "کل مسیر آزمایش، از داده تا NMI",
         FIG / "fig_pipeline.png",
-        "ساخت گراف یک بار انجام می‌شود. شاخهٔ پایه همان‌جا می‌ماند. شاخهٔ لم از افراز و گراف کوچک رد می‌شود و در پایان برچسب را بالا می‌آورد.",
+        [
+            "داده خوانده می‌شود، در صورت نیاز کوچک می‌شود، و گراف شباهت یک بار ساخته می‌شود.",
+            "شاخهٔ پایه همان جا روی گراف اصلی خوشه می‌زند.",
+            "شاخهٔ لم از افراز و گراف کوچک رد می‌شود و برچسب را به نمونه‌ها برمی‌گرداند.",
+            "هر دو شاخه با برچسب واقعی و NMI مقایسه می‌شوند.",
+        ],
         kicker="pipeline",
     )
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "چهار الگوریتم، هر دو راه", len(slides), kicker="pipeline")
+    chrome(prs, sl, "چهار الگوریتم، روی هر دو راه", len(slides), kicker="pipeline")
     trio(
         sl,
         [
@@ -617,15 +636,20 @@ def build() -> Path:
     fig_slide(
         prs,
         slides,
-        "گروه لم با خوشه یکی نیست",
+        "اصلاح آخر برچسب، بعد از برگشت به نمونه‌ها",
         FIG / "concept_polish.png",
-        "دایره، گروه لم است و همهٔ داخلش یک رنگ دارند. نقطهٔ درشت میان همسایه‌های قرمز نشسته، ولی چون عضو گروه آبی است آبی مانده. polish فقط رنگ خوشهٔ همان نقطه را قرمز می‌کند.",
+        [
+            "دایره گروه لم است، نه مرز خوشه.",
+            "اول همهٔ اعضای یک گروه یک رنگ می‌گیرند، حتی اگر یکی‌شان میان همسایه‌های رنگ دیگر باشد.",
+            "این مرحله فقط رنگ خوشهٔ همان نقطه را عوض می‌کند.",
+            "عضویت او در گروه لم دست نمی‌خورد. این مرحله جزو خود لم نیست.",
+        ],
         kicker="بعد از لم",
     )
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "پروتکل آزمایش", len(slides), kicker="آزمایش")
+    chrome(prs, sl, "تنظیم آزمایش و معیار مقایسه", len(slides), kicker="آزمایش")
     numbered(
         sl,
         [
@@ -638,7 +662,7 @@ def build() -> Path:
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "نتیجه روی گراف خودمان", len(slides), kicker="آزمایش")
+    chrome(prs, sl, "۶۰ بهتر، ۳ برابر، ۱۵ بدتر", len(slides), kicker="آزمایش")
     f = tf(sl, Inches(0.55), Inches(1.45), Inches(12.2), Inches(0.7))
     write(f, ["هفتاد و هشت مقایسه. هر بار همان الگوریتم، یک بار روی گراف اصلی و یک بار روی گراف کوچک."], size=18, color=MUTED, space=0)
     cards = [
@@ -659,15 +683,20 @@ def build() -> Path:
     fig_slide(
         prs,
         slides,
-        "اختلاف روی مجموعه‌های کامل",
+        "نمودار اختلاف: بالای صفر یعنی لم بهتر است",
         FIG / "fig_delta_nmi_full.png",
-        "میلهٔ رو به بالا یعنی گراف کوچک از راه پایه بهتر بوده است.",
+        [
+            "هر میله اختلاف NMI راه لم با راه پایه است.",
+            "بالای صفر: لم بهتر بوده است.",
+            "پایین صفر: راه پایه بهتر بوده است.",
+            "NMI نزدیکی خوشهٔ پیش‌بینی‌شده به برچسب واقعی را می‌سنجد.",
+        ],
         kicker="نتیجه",
     )
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "کجا فرق زیاد بود", len(slides), kicker="مثال")
+    chrome(prs, sl, "سه مجموعه با بیشترین بهبود", len(slides), kicker="مثال")
     trio(
         sl,
         [

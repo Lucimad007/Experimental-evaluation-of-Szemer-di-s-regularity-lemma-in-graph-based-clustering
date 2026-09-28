@@ -1,9 +1,12 @@
 """Clear concept diagrams for the defense deck. No text."""
 from pathlib import Path
 
+import subprocess
+
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Polygon
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch, Polygon, Rectangle
 
 OUT = Path(__file__).resolve().parents[1] / "assets" / "figures"
 BG = "#F4EFE4"
@@ -18,6 +21,52 @@ PALE_T = "#F0D7CF"
 PALE_A = "#EFE4D0"
 
 
+def panel(w=4.4, h=4.8):
+    f, ax = plt.subplots(figsize=(w, h), dpi=150)
+    ax.set_xlim(0, w)
+    ax.set_ylim(0, h)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    f.patch.set_facecolor(BG)
+    ax.set_facecolor(BG)
+    return f, ax
+
+
+def label(ax, x, y, text, size=28, color=INK):
+    hex_color = color.lstrip("#")
+    slug = f"v2_{hex_color}_{size}_{text}"
+    path = OUT / "_labels" / f"{abs(hash(slug))}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        subprocess.run(
+            [
+                "powershell",
+                "-STA",
+                "-File",
+                str(Path(__file__).with_name("_fa_label.ps1")),
+                "-Text",
+                text,
+                "-Out",
+                str(path),
+                "-Color",
+                hex_color,
+                "-Size",
+                str(int(size * 6)),
+            ],
+            check=True,
+        )
+    image = plt.imread(path)
+    ax.add_artist(
+        AnnotationBbox(
+            OffsetImage(image, zoom=0.28),
+            (x, y),
+            frameon=False,
+            pad=0,
+            zorder=6,
+        )
+    )
+
+
 def fig():
     f, ax = plt.subplots(figsize=(13.2, 7.2), dpi=140)
     ax.set_xlim(0, 13.2)
@@ -30,7 +79,13 @@ def fig():
 
 
 def save(f, name):
-    f.savefig(OUT / name, dpi=140, facecolor=BG, bbox_inches="tight", pad_inches=0.15)
+    ax = f.axes[0]
+    x0, x1 = ax.get_xlim()
+    y0, y1 = ax.get_ylim()
+    f.set_size_inches(x1 - x0, y1 - y0)
+    ax.set_position([0, 0, 1, 1])
+    ax.set_aspect("equal", adjustable="box")
+    f.savefig(OUT / name, dpi=120, facecolor=BG)
     plt.close(f)
 
 
@@ -164,6 +219,45 @@ def _pair_groups():
     return cloud(2.8, 3.6), cloud(10.2, 3.6)
 
 
+def eps_pair():
+    f, ax = fig()
+    ax.set_xlim(0, 16)
+    ax.set_ylim(0, 9)
+    gold = "#C4A574"
+
+    def column(x, y0, n, color):
+        ys = np.linspace(y0, y0 + 6.4, n)
+        return np.column_stack([np.full(n, x), ys])
+
+    left_a, left_b = column(1.15, 1.2, 8, NAVY), column(4.55, 1.2, 8, NAVY)
+    right_a, right_b = column(9.3, 1.2, 8, NAVY), column(12.7, 1.2, 8, NAVY)
+    for a in left_a:
+        for b in left_b:
+            ax.plot([a[0], b[0]], [a[1], b[1]], color=gold, lw=1.15, alpha=0.85, zorder=1)
+    for a in right_a:
+        for b in right_b:
+            if a[1] > 4.4 and b[1] > 4.4:
+                ax.plot([a[0], b[0]], [a[1], b[1]], color=gold, lw=1.35, alpha=0.9, zorder=1)
+    ax.add_patch(
+        FancyBboxPatch(
+            (8.85, 4.15),
+            4.3,
+            3.7,
+            boxstyle="round,pad=0.02,rounding_size=0.08",
+            facecolor="none",
+            edgecolor=TERR,
+            lw=2.2,
+            zorder=2,
+        )
+    )
+    ax.plot([8.05, 8.05], [0.7, 8.3], color=NAVY, lw=1.6, zorder=0)
+    dots(ax, left_a, NAVY, s=420)
+    dots(ax, left_b, NAVY, s=420)
+    dots(ax, right_a, NAVY, s=420)
+    dots(ax, right_b, NAVY, s=420)
+    save(f, "concept_eps_pair.png")
+
+
 def regular():
     f, ax = fig()
     L, R = _pair_groups()
@@ -252,6 +346,25 @@ def _grid(ax, origin, mode):
     return pts
 
 
+def _same_graph(ax, ox, oy, colored):
+    left = np.array([[0.0, 0.15], [0.55, 1.05], [0.35, -0.75]])
+    right = np.array([[1.85, 0.35], [2.45, 1.0], [2.25, -0.7]])
+    pts = np.vstack([left, right]) + np.array([ox, oy])
+    for group in (pts[:3], pts[3:]):
+        for i, a in enumerate(group):
+            for b in group[i + 1 :]:
+                ax.plot([a[0], b[0]], [a[1], b[1]], color="#C9BFB2", lw=1.6, zorder=1, solid_capstyle="round")
+    for a in pts[:3]:
+        for b in pts[3:]:
+            ax.plot([a[0], b[0]], [a[1], b[1]], color="#E3DBD0", lw=0.8, zorder=1)
+    if colored:
+        dots(ax, pts[:3], TERR, s=280)
+        dots(ax, pts[3:], SAGE, s=280)
+    else:
+        dots(ax, pts, NAVY, s=280)
+    return pts
+
+
 def two_paths():
     f, ax = fig()
     _grid(ax, (2.2, 3.6), "color")
@@ -260,15 +373,27 @@ def two_paths():
     save(f, "concept_path_direct.png")
 
     f, ax = fig()
-    _grid(ax, (2.2, 5.55), "plain")
-    arrow(ax, 3.35, 4.05, 3.35, 3.45)
-    ax.add_patch(Circle((2.35, 2.75), 0.42, facecolor=TERR, zorder=3))
-    ax.add_patch(Circle((4.35, 2.75), 0.42, facecolor=SAGE, zorder=3))
-    ax.plot([2.77, 3.93], [2.75, 2.75], color="#8A8175", lw=9, solid_capstyle="butt", zorder=2)
-    arrow(ax, 3.35, 2.15, 3.35, 1.55)
-    _grid(ax, (2.2, 0.05), "color")
-    ax.set_xlim(1.2, 5.5)
-    ax.set_ylim(-1.5, 7.15)
+    rng = np.random.default_rng(8)
+    many = rng.uniform((1.15, 4.15), (5.55, 8.15), size=(28, 2))
+    for i, a in enumerate(many):
+        for b in many[i + 1 :]:
+            if rng.random() < 0.16:
+                ax.plot([a[0], b[0]], [a[1], b[1]], color="#DDD6CB", lw=0.7, zorder=1)
+    dots(ax, many, NAVY, s=70)
+    arrow(ax, 3.35, 3.7, 3.35, 2.85)
+    small = np.array([(2.15, 1.7), (4.55, 1.7), (2.15, 0.55), (4.55, 0.55)])
+    for i, j, w in ((0, 1, 5), (0, 2, 2.2), (1, 3, 3.4), (2, 3, 1.6)):
+        ax.plot(
+            [small[i, 0], small[j, 0]],
+            [small[i, 1], small[j, 1]],
+            color="#8A8175",
+            lw=w,
+            solid_capstyle="round",
+            zorder=2,
+        )
+    dots(ax, small, NAVY, s=280)
+    ax.set_xlim(0.55, 6.15)
+    ax.set_ylim(0.05, 8.55)
     save(f, "concept_path_lemma.png")
 
 
@@ -412,20 +537,33 @@ def certs():
     save(f, "concept_alon2.png")
 
     f, ax = fig()
-    whole = np.array([[1.5, 4.4], [2.3, 4.6], [1.6, 3.5], [2.4, 3.6], [1.8, 2.6], [2.5, 2.7]])
-    blob(ax, whole, PALE_N, pad=0.5)
-    dots(ax, whole[:3], TERR, s=180)
-    dots(ax, whole[3:], NAVY, s=180)
-    arrow(ax, 3.5, 3.6, 4.3, 3.6)
-    top = whole[:3] + np.array([4.2, 0.7])
-    bot = whole[3:] + np.array([4.2, -0.7])
-    blob(ax, top, PALE_T, pad=0.4)
-    blob(ax, bot, PALE_N, pad=0.4)
-    dots(ax, top, TERR, s=160)
-    dots(ax, bot, NAVY, s=160)
-    dots(ax, np.array([[8.6, 4.8], [9.1, 4.2]]), "#B7B1A6", s=120)
-    ax.set_xlim(0.4, 10.0)
-    ax.set_ylim(1.2, 5.8)
+    whole = np.array([[1.7, 4.55], [2.55, 4.7], [1.85, 3.7], [2.7, 3.15], [1.75, 2.45], [2.65, 2.2]])
+    blob(ax, whole, PALE_N, pad=0.55)
+    cert = whole[:3]
+    rest = whole[3:]
+    cc = cert.mean(axis=0)
+    ax.add_patch(Circle(cc, 1.05, facecolor=PALE_T, edgecolor=TERR, lw=2.2, zorder=1))
+    dots(ax, cert, TERR, s=220, z=3)
+    dots(ax, rest, NAVY, s=220, z=3)
+    label(ax, 1.15, 5.55, "یک گروه", size=22, color=NAVY)
+    label(ax, 3.55, 4.85, "گواه", size=22, color=TERR)
+
+    arrow(ax, 4.35, 3.45, 5.35, 3.45)
+
+    top = np.array([[6.7, 5.15], [7.7, 5.25], [7.15, 4.35]])
+    bot = np.array([[6.75, 2.55], [7.75, 2.35], [7.1, 1.55]])
+    scrap = np.array([[10.15, 3.85], [10.85, 3.15]])
+    blob(ax, top, PALE_T, pad=0.48)
+    blob(ax, bot, PALE_N, pad=0.48)
+    ax.add_patch(Circle(scrap.mean(axis=0), 0.85, facecolor="#E6E1D8", edgecolor="none", zorder=0))
+    dots(ax, top, TERR, s=220)
+    dots(ax, bot, NAVY, s=220)
+    dots(ax, scrap, "#8A8175", s=160)
+    label(ax, 8.55, 5.35, "گواه", size=22, color=TERR)
+    label(ax, 8.55, 1.45, "بقیه", size=22, color=NAVY)
+    label(ax, 10.5, 4.85, "استثنا", size=22, color="#6B645C")
+    ax.set_xlim(0.2, 11.6)
+    ax.set_ylim(0.55, 6.15)
     save(f, "concept_refine.png")
 
 
@@ -453,7 +591,180 @@ def fair():
     save(f, "concept_label_copy.png")
 
 
+def _panel(ax, x, y, w, h, face):
+    ax.add_patch(
+        FancyBboxPatch(
+            (x, y),
+            w,
+            h,
+            boxstyle="round,pad=0.02,rounding_size=0.12",
+            facecolor=face,
+            edgecolor="none",
+            zorder=0,
+        )
+    )
+
+
+def similarity_matrix():
+    f, ax = fig()
+    ax.set_xlim(0, 6.4)
+    ax.set_ylim(0, 7.2)
+    n = 10
+    rng = np.random.default_rng(3)
+    m = rng.uniform(0.08, 0.28, (n, n))
+    m[:4, :4] = rng.uniform(0.62, 0.92, (4, 4))
+    m[5:9, 5:9] = rng.uniform(0.55, 0.88, (4, 4))
+    np.fill_diagonal(m, 1.0)
+    m = (m + m.T) / 2
+    cell = 0.5
+    x0, y0 = 0.7, 0.55
+    for i in range(n):
+        for j in range(n):
+            v = float(m[i, j])
+            pale = np.array([0xF4, 0xEF, 0xE4]) / 255
+            ink = np.array([0x1A, 0x33, 0x4A]) / 255
+            rgb = pale * (1 - v) + ink * v
+            ax.add_patch(
+                Rectangle(
+                    (x0 + j * cell, y0 + (n - 1 - i) * cell),
+                    cell - 0.04,
+                    cell - 0.04,
+                    facecolor=rgb,
+                    edgecolor="none",
+                    zorder=2,
+                )
+            )
+    save(f, "concept_similarity_matrix.png")
+
+
+def why_cluster():
+    f, ax = fig()
+    ax.set_xlim(0, 6.4)
+    ax.set_ylim(0, 7.2)
+    gray = np.array(
+        [
+            (1.15, 5.5),
+            (1.7, 4.7),
+            (0.85, 4.2),
+            (1.55, 3.5),
+            (0.7, 3.0),
+            (1.9, 2.6),
+            (1.2, 1.9),
+        ]
+    )
+    dots(ax, gray, "#B7AFA3", s=220, z=3)
+    arrow(ax, 2.55, 3.6, 3.35, 3.6)
+    blob(ax, [(4.35, 5.15), (5.15, 5.35), (4.7, 4.45)], PALE_T, pad=0.35)
+    blob(ax, [(4.4, 2.35), (5.2, 2.15), (4.75, 1.55)], PALE_S, pad=0.35)
+    dots(ax, [(4.35, 5.15), (5.15, 5.35), (4.7, 4.45)], TERR, s=260, z=3)
+    dots(ax, [(4.4, 2.35), (5.2, 2.15), (4.75, 1.55)], SAGE, s=260, z=3)
+    save(f, "concept_why_cluster.png")
+
+
+def _kind_cell(ax, x, y, w, h, face, edge, title, color):
+    ax.add_patch(
+        FancyBboxPatch(
+            (x, y),
+            w,
+            h,
+            boxstyle="round,pad=0.02,rounding_size=0.16",
+            facecolor=face,
+            edgecolor=edge,
+            lw=2.4 if edge != "none" else 0,
+            zorder=0,
+        )
+    )
+    ax.add_patch(
+        FancyBboxPatch(
+            (x, y + h - 0.78),
+            w,
+            0.78,
+            boxstyle="round,pad=0.01,rounding_size=0.12",
+            facecolor="#FFFCF8",
+            edgecolor="none",
+            zorder=1,
+        )
+    )
+    return
+
+
+def why_kinds():
+    f, ax = fig()
+    ax.set_xlim(0, 6.4)
+    ax.set_ylim(0, 7.2)
+    _kind_cell(ax, 0.18, 3.72, 2.95, 3.28, PALE_N, "none", "تفکیکی", NAVY)
+    _kind_cell(ax, 3.28, 3.72, 2.95, 3.28, PALE_A, "none", "سلسله‌مراتبی", "#8A5A2A")
+    _kind_cell(ax, 0.18, 0.18, 2.95, 3.28, PALE_T, "none", "چگالی", TERR)
+    _kind_cell(ax, 3.28, 0.18, 2.95, 3.28, "#F7E4DC", TERR, "گراف", TERR)
+    # centers, points around them
+    ax.scatter([1.15], [5.55], s=90, c=NAVY, marker="P", zorder=4)
+    ax.scatter([2.15], [4.85], s=90, c=TERR, marker="P", zorder=4)
+    dots(ax, [(0.85, 5.85), (1.45, 5.9), (0.95, 5.2), (1.5, 5.25)], NAVY, s=80, z=3)
+    dots(ax, [(1.85, 5.15), (2.45, 5.15), (1.9, 4.5), (2.5, 4.55)], TERR, s=80, z=3)
+    # dendrogram under the header
+    tree = [(3.7, 4.55), (4.35, 4.55), (5.15, 4.55), (5.8, 4.55), (4.02, 5.15), (5.48, 5.15), (4.75, 5.75)]
+    links = [(0, 4), (1, 4), (2, 5), (3, 5), (4, 6), (5, 6)]
+    for i, j in links:
+        ax.plot([tree[i][0], tree[j][0]], [tree[i][1], tree[j][1]], color="#8A5A2A", lw=2.2, zorder=2, solid_capstyle="round")
+    dots(ax, tree[:4], "#8A5A2A", s=90, z=3)
+    ax.scatter([tree[4][0], tree[5][0], tree[6][0]], [tree[4][1], tree[5][1], tree[6][1]], s=40, c="#8A5A2A", zorder=3)
+    # dense clump versus stray points
+    rng = np.random.default_rng(2)
+    dots(ax, rng.normal((1.55, 1.85), 0.16, size=(12, 2)), TERR, s=55, z=3)
+    dots(ax, [(0.55, 2.45), (0.7, 0.85), (2.55, 2.4), (2.7, 0.7)], "#C9C1B4", s=36, z=2)
+    # neighbors joined by edges
+    g = np.array([(3.85, 2.15), (4.55, 2.35), (5.25, 2.1), (4.15, 1.15), (5.05, 1.05)])
+    ax.plot([3.85, 4.55, 5.25, 3.85], [2.15, 2.35, 2.1, 2.15], color=TERR, lw=5, zorder=2, solid_capstyle="round")
+    ax.plot([4.15, 5.05], [1.15, 1.05], color=SAGE, lw=5, zorder=2, solid_capstyle="round")
+    ax.plot([4.55, 5.05], [2.35, 1.05], color="#C9C1B4", lw=1.3, zorder=1)
+    dots(ax, g[:3], TERR, s=160, z=3)
+    dots(ax, g[3:], SAGE, s=160, z=3)
+    save(f, "concept_why_kinds.png")
+
+
+def why_graph():
+    f, ax = fig()
+    ax.set_xlim(0, 6.4)
+    ax.set_ylim(0, 7.2)
+    a = np.array([(1.5, 5.3), (2.7, 5.6), (1.8, 4.2)])
+    b = np.array([(4.2, 2.5), (5.3, 2.1), (4.6, 1.3)])
+    for i in range(3):
+        for j in range(i + 1, 3):
+            ax.plot([a[i, 0], a[j, 0]], [a[i, 1], a[j, 1]], color=NAVY, lw=7, zorder=1, solid_capstyle="round")
+            ax.plot([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], color=TERR, lw=7, zorder=1, solid_capstyle="round")
+    ax.plot([2.7, 4.2], [5.6, 2.5], color="#C9C1B4", lw=1.4, zorder=1)
+    dots(ax, a, NAVY, s=420, z=3)
+    dots(ax, b, TERR, s=420, z=3)
+    save(f, "concept_why_graph.png")
+
+
+def why_lemma():
+    f, ax = fig()
+    ax.set_xlim(0, 6.4)
+    ax.set_ylim(0, 7.2)
+    rng = np.random.default_rng(7)
+    cloud = rng.uniform((0.45, 1.3), (2.55, 5.9), size=(16, 2))
+    for i, p in enumerate(cloud):
+        for q in cloud[i + 1 :]:
+            if rng.random() < 0.35:
+                ax.plot([p[0], q[0]], [p[1], q[1]], color="#C9C1B4", lw=0.6, zorder=1)
+    dots(ax, cloud, NAVY, s=36, z=2)
+    arrow(ax, 2.85, 3.6, 3.55, 3.6)
+    big = np.array([(4.3, 5.3), (5.5, 5.1), (4.4, 2.0), (5.55, 2.3)])
+    cols = [NAVY, TERR, SAGE, SAND]
+    ax.plot([4.3, 5.5], [5.3, 5.1], color="#8A8175", lw=8, zorder=1, solid_capstyle="round")
+    ax.plot([4.4, 5.55], [2.0, 2.3], color="#8A8175", lw=3.2, zorder=1, solid_capstyle="round")
+    ax.plot([4.3, 4.4], [5.3, 2.0], color="#8A8175", lw=1.5, zorder=1, solid_capstyle="round")
+    for p, c in zip(big, cols):
+        ax.scatter([p[0]], [p[1]], s=700, c=c, zorder=3, linewidths=0)
+    save(f, "concept_why_lemma.png")
+
+
 if __name__ == "__main__":
+    why_cluster()
+    why_kinds()
+    why_graph()
+    why_lemma()
     vertices()
     heavy()
     edges()
