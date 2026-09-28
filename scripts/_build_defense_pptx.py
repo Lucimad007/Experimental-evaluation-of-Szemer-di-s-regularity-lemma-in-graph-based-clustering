@@ -728,7 +728,7 @@ def build() -> Path:
     plate = box(s, Inches(1.35), Inches(2.05), Inches(10.65), Inches(3.35), PANEL, rounded=True)
     shadow(plate, blur=0.5, dist=0.16, alpha=32, color="000000")
     f = tf(s, Inches(1.7), Inches(2.4), Inches(10), Inches(1.3))
-    write(f, ["پرسش و پاسخ"], size=44, bold=True, color=NAVY, space=0)
+    write(f, ["ممنون از توجه شما"], size=44, bold=True, color=NAVY, space=0)
     box(s, Inches(1.7), Inches(3.85), Inches(2.2), Inches(0.09), ACCENT)
     f = tf(s, Inches(1.7), Inches(4.15), Inches(10), Inches(0.6))
     write(f, ["با سپاس از دکتر زینب مالکی"], size=20, color=MUTED, space=0)
