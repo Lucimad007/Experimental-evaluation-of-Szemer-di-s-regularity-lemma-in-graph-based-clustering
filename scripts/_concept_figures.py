@@ -302,7 +302,36 @@ def density():
     ax.add_patch(Circle((9.1, 3.6), 0.85, facecolor=NAVY, zorder=3))
     ax.add_patch(Circle((11.7, 3.6), 0.85, facecolor=TERR, zorder=3))
     ax.plot([9.95, 10.85], [3.6, 3.6], color=TERR, lw=18, solid_capstyle="butt", zorder=2)
+    label(ax, 3.5, 6.45, "همه یال‌ها", size=22, color=NAVY)
+    label(ax, 10.4, 5.15, "چگالی", size=22, color=TERR)
     save(f, "concept_density.png")
+
+
+def lemma_says():
+    f, ax = fig()
+    rng = np.random.default_rng(4)
+    many = rng.uniform((0.9, 1.5), (4.7, 5.5), size=(22, 2))
+    for i, a in enumerate(many):
+        for b in many[i + 1 :]:
+            if rng.random() < 0.14:
+                ax.plot([a[0], b[0]], [a[1], b[1]], color="#DDD6CB", lw=0.7, zorder=1)
+    dots(ax, many, NAVY, s=70)
+    label(ax, 2.8, 6.15, "گراف", size=22, color=NAVY)
+    arrow(ax, 5.15, 3.5, 6.15, 3.5)
+    groups = [
+        (np.array([[7.15, 5.15], [7.85, 5.35], [7.4, 4.45], [8.05, 4.55]]), PALE_N, NAVY),
+        (np.array([[9.85, 5.2], [10.55, 5.3], [10.05, 4.5], [10.7, 4.6]]), PALE_T, TERR),
+        (np.array([[8.35, 2.55], [9.15, 2.65], [8.55, 1.85], [9.35, 1.75]]), PALE_S, SAGE),
+    ]
+    for pts, pale, col in groups:
+        blob(ax, pts, pale, pad=0.42)
+        dots(ax, pts, col, s=90)
+    ax.plot([8.0, 10.1], [4.85, 4.9], color=TERR, lw=10, solid_capstyle="round", zorder=2)
+    label(ax, 9.2, 6.15, "گروه‌ها", size=22, color=NAVY)
+    label(ax, 9.05, 4.15, "چگالی", size=20, color=TERR)
+    ax.set_xlim(0.3, 11.5)
+    ax.set_ylim(0.7, 6.7)
+    save(f, "concept_lemma_says.png")
 
 
 def reduced():

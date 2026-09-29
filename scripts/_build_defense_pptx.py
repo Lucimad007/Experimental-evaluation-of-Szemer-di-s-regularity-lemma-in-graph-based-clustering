@@ -310,7 +310,7 @@ def fig_slide(prs, slides, title, path, caption="", kicker="شکل", big=False):
     return sl
 
 
-def trio(slide, cards, top=1.7, height=4.6):
+def trio(slide, cards, top=1.7, height=4.6, body_size=18):
     n = len(cards)
     gap = 0.22
     width = (12.3 - gap * (n - 1)) / n
@@ -324,7 +324,7 @@ def trio(slide, cards, top=1.7, height=4.6):
         f = tf(slide, x + Inches(0.25), Inches(top + 0.9), Inches(width - 0.5), Inches(1.3))
         write(f, [title], size=22 if n > 3 else 26, bold=True, color=NAVY, space=0)
         f = tf(slide, x + Inches(0.25), Inches(top + 2.3), Inches(width - 0.5), Inches(2.0))
-        write(f, [body], size=18, color=INK, space=0)
+        write(f, [body], size=body_size, color=INK, space=0)
 
 
 def numbered(slide, items, top=1.38):
@@ -440,6 +440,40 @@ def build() -> Path:
     shadow(shell, blur=0.28, dist=0.08, alpha=18)
     box(sl, Inches(0.62), Inches(1.5), Inches(5.37), Inches(5.27), PANEL, rounded=True)
     add_picture_fit(sl, FIG / "concept_why_lemma.png", Inches(0.95), Inches(1.85), Inches(4.7), Inches(4.55))
+
+    fig_slide(
+        prs,
+        slides,
+        "لم نظم زمردی چه می‌گوید",
+        FIG / "concept_lemma_says.png",
+        [
+            "گراف به‌قدر کافی بزرگ.",
+            "چند گروه تقریباً هم‌اندازه. تعداد گروه‌ها خیلی کمتر از تعداد رأس‌ها.",
+            "یال یکنواخت بین بیشتر گروه‌ها. یک عدد برای هر جفت: چگالی.",
+            "هر گروه یک رأس. خوشه‌بندی راه لم روی همین گراف کوچک.",
+        ],
+        kicker="لم",
+    )
+
+    sl = new(prs)
+    slides.append(sl)
+    chrome(prs, sl, "جفت منظم و جفت نامنظم", len(slides), kicker="لم")
+    pair_cards = [
+        ("جفت منظم", "یال یکنواخت بین دو گروه. یک چگالی برای کل رابطه.", FIG / "concept_regular.png"),
+        ("جفت نامنظم", "یک تکه شلوغ، بقیه خلوت. یک عدد ناکافی.", FIG / "concept_irregular.png"),
+    ]
+    gap = 0.24
+    width = (12.3 - gap) / 2
+    for i, (title, body, path) in enumerate(pair_cards):
+        x = 0.5 + (1 - i) * (width + gap)
+        card = box(sl, Inches(x), Inches(1.4), Inches(width), Inches(5.45), PANEL, rounded=True)
+        shadow(card, blur=0.28, dist=0.08, alpha=18)
+        box(sl, Inches(x), Inches(1.4), Inches(width), Inches(0.1), ACCENT if i == 0 else NAVY)
+        f = tf(sl, Inches(x + 0.28), Inches(1.65), Inches(width - 0.56), Inches(0.5))
+        write(f, [title], size=22, bold=True, color=NAVY, space=0)
+        f = tf(sl, Inches(x + 0.28), Inches(2.2), Inches(width - 0.56), Inches(0.9))
+        write(f, [body], size=16, color=INK, space=0)
+        add_picture_fit(sl, path, Inches(x + 0.4), Inches(3.2), Inches(width - 0.8), Inches(3.3))
 
     fig_slide(
         prs,
@@ -649,36 +683,26 @@ def build() -> Path:
 
     sl = new(prs)
     slides.append(sl)
-    chrome(prs, sl, "تنظیم آزمایش و معیار مقایسه", len(slides), kicker="آزمایش")
-    numbered(
+    chrome(prs, sl, "بیست مجموعهٔ واقعی", len(slides), kicker="آزمایش")
+    f = tf(sl, Inches(0.55), Inches(1.4), Inches(12.2), Inches(0.85))
+    write(
+        f,
+        ["جدول ویژگی. سطر، نمونه. ستون، ویژگی عددی. برچسب واقعی فقط برای NMI. از ۱۰۶ نمونه تا حدود ۱۱ هزار. از ۲ کلاس تا ۱۰۰ کلاس."],
+        size=16,
+        color=INK,
+        space=0,
+    )
+    trio(
         sl,
         [
-            "بیست مجموعهٔ داده و چهار الگوریتم: هشتاد خانه، که هفتاد و هشت تایش معتبر ماند.",
-            "ده مجموعه با همهٔ نمونه‌ها اجرا شد و ده مجموعه با حدود چهارصد نمونهٔ طبقه‌ای.",
-            "برای هر خانه، شبکهٔ تنظیمات مثل آزمایش مقاله انتخاب شد و بهترین مقدار گزارش شد.",
-            "ادعای اصلی این ارائه، مقایسه با راه پایهٔ خودمان است، نه رونویسی جدول چاپ‌شدهٔ مقاله.",
+            ("کامل", "ده مجموعه، همهٔ سطرها", "زیر ۵۰۰ نمونه. Wine، Glass، Seeds، Thyroid، Sonar، Appendicitis، Spectf، Ecoli، Landmine، Libras."),
+            ("نمونه‌گیری", "ده مجموعه، حدود ۴۰۰ سطر", "حفظ نسبت کلاس‌ها. USPS، Landsat، Rice، Raisin، Spambase، Banknote، Leaves، Segment، Dutchnumeral، SCC."),
+            ("سنجش", "همان الگوریتم، دو راه", "گراف اصلی و گراف کوچک. بهترین تنظیم هر خانه. دو خانهٔ خالی Leaves. ۷۸ مقایسه."),
         ],
+        top=2.35,
+        height=4.35,
+        body_size=15,
     )
-
-    sl = new(prs)
-    slides.append(sl)
-    chrome(prs, sl, "۶۰ بهتر، ۳ برابر، ۱۵ بدتر", len(slides), kicker="آزمایش")
-    f = tf(sl, Inches(0.55), Inches(1.45), Inches(12.2), Inches(0.7))
-    write(f, ["هفتاد و هشت مقایسه. هر بار همان الگوریتم، یک بار روی گراف اصلی و یک بار روی گراف کوچک."], size=18, color=MUTED, space=0)
-    cards = [
-        ("۶۰", "گراف کوچک بهتر", SAGE),
-        ("۳", "برابر", NAVY),
-        ("۱۵", "گراف اصلی بهتر", ACCENT),
-    ]
-    for i, (n, lab, col) in enumerate(cards):
-        x = Inches(0.5 + (2 - i) * 4.2)
-        card = box(sl, x, Inches(2.3), Inches(3.95), Inches(3.15), PANEL, rounded=True)
-        shadow(card, blur=0.32, dist=0.1, alpha=20)
-        box(sl, x, Inches(2.3), Inches(3.95), Inches(0.12), col)
-        f = tf(sl, x, Inches(2.6), Inches(3.95), Inches(1.5))
-        write(f, [n], size=60, bold=True, color=col, space=0, align="c")
-        f = tf(sl, x, Inches(4.3), Inches(3.95), Inches(0.7))
-        write(f, [lab], size=20, color=INK, space=0, align="c")
 
     fig_slide(
         prs,
@@ -710,15 +734,22 @@ def build() -> Path:
     sl = new(prs)
     slides.append(sl)
     chrome(prs, sl, "جمع‌بندی", len(slides), kicker="پایان")
-    trio(
-        sl,
-        [
-            ("۱", "لم فشرده می‌کند", "گراف بزرگ به چند ده رأس کاهش پیدا می‌کند."),
-            ("۲", "کیفیت معمولاً بهتر ماند", "در ۶۰ مقایسه گراف کوچک بهتر بود، در ۳ مقایسه برابر، در ۱۵ مقایسه بدتر."),
-            ("۳", "الگوریتم قدیمی قوی‌تر شد", "همان روش‌های کلاسیک، بعد از کوچک کردن گراف، در بیشتر آزمایش‌ها دقیق‌تر شدند. بیشترین سود جایی بود که راه پایه ناپایدار بود."),
-        ],
-        height=4.5,
-    )
+    f = tf(sl, Inches(0.55), Inches(1.42), Inches(12.2), Inches(0.7))
+    write(f, ["مقایسه با راه پایهٔ خود پروژه. مجموعه‌های نمونه‌گیری‌شده، جدا از عدد مقاله."], size=16, color=MUTED, space=0)
+    cards = [
+        ("۶۰", "گراف کوچک بهتر", SAGE),
+        ("۳", "برابر", NAVY),
+        ("۱۵", "گراف اصلی بهتر", ACCENT),
+    ]
+    for i, (n, lab, col) in enumerate(cards):
+        x = Inches(0.5 + (2 - i) * 4.2)
+        card = box(sl, x, Inches(2.3), Inches(3.95), Inches(3.15), PANEL, rounded=True)
+        shadow(card, blur=0.32, dist=0.1, alpha=20)
+        box(sl, x, Inches(2.3), Inches(3.95), Inches(0.12), col)
+        f = tf(sl, x, Inches(2.6), Inches(3.95), Inches(1.5))
+        write(f, [n], size=60, bold=True, color=col, space=0, align="c")
+        f = tf(sl, x, Inches(4.3), Inches(3.95), Inches(0.7))
+        write(f, [lab], size=20, color=INK, space=0, align="c")
 
     s = new(prs)
     slides.append(s)
