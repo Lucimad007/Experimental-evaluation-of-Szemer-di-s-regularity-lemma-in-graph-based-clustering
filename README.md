@@ -1,37 +1,57 @@
 # Experimental evaluation of Szemerédi's regularity lemma in graph-based clustering
 
-Python implementation of Algorithm 1 from:
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![pytest](https://img.shields.io/badge/tests-pytest-0A7C3A?logo=pytest&logoColor=white)](pytest.ini)
+[![License: MIT](https://img.shields.io/badge/License-MIT-A33B24)](LICENSE)
+[![Paper](https://img.shields.io/badge/Pattern%20Recognition-171%20%7C%20112205-1A334A)](https://doi.org/10.1016/j.patcog.2025.112205)
+[![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.patcog.2025.112205-6B645C)](https://doi.org/10.1016/j.patcog.2025.112205)
 
-> Jian Hou, Juntao Ge, Huaqiang Yuan, Marcello Pelillo.  
-> *Experimental evaluation of Szemerédi's regularity lemma in graph-based clustering.*  
-> Pattern Recognition **171** (2026) 112205.
+Independent Python implementation of **Algorithm 1** from Hou, Ge, Yuan, and Pelillo, *Pattern Recognition* **171** (2026), Art. 112205.
 
-**Pipeline (lemma path only):** similarity graph \(G\) → approximately regular partition (Alon + Hou modifications) → reduced graph \(R\) (Eq. 3) → cluster \(R\) (SPC / NJW, APC, DSet, SPRG) → map class labels back to vertices → assign exceptional set \(V_0\) to the nearest cluster → optional Lloyd polish on the mapped labels. Clustering on the full graph \(G\) is **not** reported as the “enhanced” method.
+A similarity graph is expensive: memory grows like \(n^2\) and several graph clustering algorithms like \(n^3\). Szemerédi’s regularity lemma replaces most of that graph by a much smaller reduced graph. This repository builds that reduced graph, clusters it, and compares the result with clustering the original graph.
 
-This reading is permutation-invariant. It does **not** restore class-sorted UCI file order, a complete Gaussian (\(\tau=0\)) that makes Alon vacuous, or full-graph clustering as a substitute for Algorithm 1. Those shortcuts can inflate NMI; they are not the lemma.
+## Result on this grid
 
-## Status vs the paper
+On **78 valid cells** (20 datasets × SPC, APC, DSet, SPRG; two Leaves cells empty), clustering the reduced graph versus the same algorithm on the original graph:
 
-On the honest grid, enhanced \(R\)-clustering **often beats our own original** base algorithms (especially APC, DSet, SPRG). It **usually does not match Hou Tables 2–5**. Large UCI sets with \(n>500\) were stratified to ~400 vertices; those cells are **not** comparable to the paper’s full-\(n\) numbers.
+| Outcome | Cells |
+|---|---:|
+| Reduced graph better | 60 |
+| Equal | 3 |
+| Original graph better | 15 |
 
-Details: [`RESULTS.md`](RESULTS.md), [`VERIFICATION.md`](VERIFICATION.md), best-per-cell CSV `results/lemma_claim/best.csv` (gitignored; merged over the honest grid, the fine-partition sweep and the coordinate refinement below). Persian BSc write-up: `REPORT_FA.md` / `REPORT_FA.docx`.
+That comparison is against **this repository’s own baseline**, on the same similarity graph. It is not a copy of Hou’s printed tables. Ten datasets run at full \(n\). Ten with \(n>500\) use a stratified cap of about 400 vertices, so those cells are not comparable to the paper’s full-data numbers. See [`RESULTS.md`](RESULTS.md) and [`VERIFICATION.md`](VERIFICATION.md).
+
+## Pipeline
+
+```text
+table  →  z-score  →  Gaussian similarity + kNN  →  graph G
+                                                      ├─ original: cluster G
+                                                      └─ enhanced: Alon partition → reduced graph R
+                                                                    → cluster R → lift labels → V0 → polish
+                                                      both scored with NMI against true labels
+```
+
+The enhanced branch clusters \(R\), not \(G\). Polish (Lloyd or k-means on the lifted labels) runs after Algorithm 1 and is not part of the lemma.
 
 ## Layout
 
-```
-src/szemeredi/     §3.1–3.3 partition + reduced graph
-src/clustering/    §2 SPC, SPRG, APC, DSet
-src/enhanced/      Algorithm 1 + label map / polish
-src/datasets.py    Table 1 loaders
-src/experiments.py Exp 1–3 runners
-spec/              paper section ↔ code (source of truth)
-scripts/_lemma_all.py   honest grid used for the latest CSV
-tests/             pytest
-```
+| Path | Role |
+|---|---|
+| [`src/szemeredi/`](src/szemeredi/) | §3.1–3.3 partition and reduced graph |
+| [`src/clustering/`](src/clustering/) | SPC (NJW), APC, DSet, SPRG |
+| [`src/enhanced/`](src/enhanced/) | Algorithm 1, label lift, polish |
+| [`src/datasets.py`](src/datasets.py) | Table 1 loaders (20 datasets) |
+| [`src/experiments.py`](src/experiments.py) | Experiment runners |
+| [`spec/`](spec/) | Paper section ↔ code |
+| [`scripts/_lemma_all.py`](scripts/_lemma_all.py) | Honest grid behind the latest CSV |
+| [`tests/`](tests/) | pytest |
+| [`THESIS_FA.md`](THESIS_FA.md) | Persian BSc thesis |
+| [`THESIS_FA_slides.pptx`](THESIS_FA_slides.pptx) | Defense slides |
+
+`results/` is gitignored. Do not quote `results/support_artifact/` (the graph-blind `support` partitioner).
 
 ## Setup
-
-Python 3.10+.
 
 ```powershell
 python -m venv .venv
@@ -39,14 +59,14 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Houjian said the 2026 experiments use Marco Fiorucci’s lemma code, not a public clustering wrapper. Clone it (gitignored):
+Hou’s 2026 runs use Marco Fiorucci’s lemma code, not a public clustering wrapper. The clone stays gitignored:
 
 ```powershell
 git clone --depth 1 https://github.com/MarcoFiorucci/dense_graph_reducer.git .reference/dense_graph_reducer
 python -m src.main smoke --alg-kind fiorucci --datasets Wine
 ```
 
-`--alg-kind fiorucci` runs that repo’s Alon (degree init/refine, their stop). It does **not** apply our `adj_threshold` / `stop_rule` / spectral extras. Default remains this repo’s Alon.
+`--alg-kind fiorucci` runs that repository’s Alon partition. It does not apply this repo’s `adj_threshold`, `stop_rule`, or spectral extras. The default partitioner is this repository’s Alon.
 
 ## Usage
 
@@ -57,46 +77,51 @@ python -m src.main smoke
 python -m src.main exp2 --profile honest --datasets Wine,Seeds,Ecoli --algorithms SPC,APC,DSet
 ```
 
-`--profile honest` and `--profile paper` are the same graph-faithful defaults: weighted degree ([16] Eq. 15), theoretical stop, Alon, all-pairs \(R\), mean adjacency threshold (not \(\tau=0\)).
+`--profile honest` and `--profile paper` share the same graph-faithful defaults: weighted degree, theoretical stop, Alon, all-pairs \(R\), mean adjacency threshold. They do not use a complete Gaussian (\(\tau=0\)), which makes the Alon tests vacuous.
 
-Latest full honest sweep (small sets at full \(n\); large sets capped):
+Full honest sweep (small sets at full \(n\); large sets capped):
 
 ```powershell
 python scripts/_lemma_all.py
 ```
 
-Grid (see the script): \(\varepsilon\in\{0.1,0.2\}\), \(\epsilon\in\{0.05,0.1\}\), \(b\in\{8,16\}\), \(\sigma\in\{1,2,5\}\), kNN 20 or mutual 15, \(d_0\in\{0,\mathrm{mean}\}\), z-score features.
+Grid in that script: \(\varepsilon\in\{0.1,0.2\}\), \(\epsilon\in\{0.05,0.1\}\), \(b\in\{8,16\}\), \(\sigma\in\{1,2,5\}\), kNN 20 or mutual 15, \(d_0\in\{0,\mathrm{mean}\}\), z-scored features.
 
-Results go under `results/` (gitignored). Do not quote `results/support_artifact/` (graph-blind `support` partitioner).
-
-Higher-score sweeps (2026-09-13, all still graph-faithful, no full-graph clustering):
+Later sweeps, still graph-faithful and still clustering \(R\):
 
 ```powershell
-python scripts/_lemma_higher.py     # finer partitions: ϵ up to 0.2, b up to 128, n up to 1200
-python scripts/_refine_winners.py   # one-axis coordinate refinement from each winner
-python scripts/_compare_best.py     # best.csv vs the old grid
+python scripts/_lemma_higher.py    # finer partitions: epsilon up to 0.2, b up to 128, n up to 1200
+python scripts/_refine_winners.py  # one-axis refinement from each winner
+python scripts/_compare_best.py    # best.csv against the main grid
 ```
 
-`_refine_winners.py` adds axes the main grid never searched (graph metric, adjacency
-threshold, stop rule, ε-regular-only R, d₀ percentiles, Fiorucci partitioner,
-dense/other kNN). The metric axis (`euclidean`/`cosine`/`correlation`) is
-paper-silent — see `spec/similarity.md`. `degree_mode="alon"` (index order) is
-**excluded** from every search because it is permutation-variant (the artifact
-documented in `CONTEXT_PROMPT.md`).
+`_refine_winners.py` also searches axes the main grid never touched (graph metric, adjacency threshold, stop rule, ε-regular-only \(R\), \(d_0\) percentiles, Fiorucci’s partitioner, other kNN). The metric axis is paper-silent; see [`spec/similarity.md`](spec/similarity.md). `degree_mode="alon"` (index order) is excluded from every search: it is permutation-variant.
 
 ## What is implemented
 
-- **Partition (§3.2):** Alon (three conditions) with Hou’s caps on irregular pairs, Fiorucci-style degree certificates, stop while \(\epsilon > k_i/n\). Frieze–Kannan is optional.
-- **Reduced graph (§3.3):** Eq. (3) densities; \(d_0=0\) keeps every pair.
-- **Algorithm 1 (§3.4):** cluster \(R\), map, \(V_0\) nearest cluster.
-- **Similarity (§4):** \(s(x,y)=\exp(-d(x,y)/(\bar d\cdot\sigma))\), optional z-score + kNN.
-- **Metrics:** NMI, ACC (best permutation), ARI, RI.
-- **Datasets:** 20 Table-1 sets (local files, `ucimlrepo`, USPS `.mat`, mfeat, leaves).
+- **Partition (§3.2).** Alon’s three tests, with Hou’s cap of one irregular partner per class, Fiorucci-style degree certificates, and a stop when classes are small enough. The partition is approximately regular. Frieze–Kannan is optional.
+- **Reduced graph (§3.3).** Pair densities. \(d_0=0\) keeps every pair.
+- **Algorithm 1 (§3.4).** Cluster \(R\), copy the label onto each class, assign \(V_0\) to the nearest cluster.
+- **Similarity (§4).** \(s(x,y)=\exp(-d/(\bar d\cdot\sigma))\), optional z-score and kNN.
+- **Metrics.** NMI, ACC (best label permutation), ARI, RI.
+- **Datasets.** The 20 sets in Table 1 (local files, `ucimlrepo`, USPS `.mat`, mfeat, leaves).
 
-External §4.3 methods (3W-DPET, DenMune, …) are **not** re-run; Tables 2–5 numbers are stored in `src/baselines.py` for comparison only.
+External §4.3 methods are not re-run. Hou’s printed numbers live in [`src/baselines.py`](src/baselines.py) for comparison only.
 
-## Notes
+## Citation
 
-Regular pairs assume a roughly random edge pattern typical of **real** data. Synthetic blobs in `smoke_test` can show high original NMI and low enhanced NMI; that is expected, not a loader bug.
+```bibtex
+@article{hou2026szemeredi,
+  author  = {Hou, Jian and Ge, Juntao and Yuan, Huaqiang and Pelillo, Marcello},
+  title   = {Experimental evaluation of {Szemerédi's} regularity lemma in graph-based clustering},
+  journal = {Pattern Recognition},
+  volume  = {171},
+  pages   = {112205},
+  year    = {2026},
+  doi     = {10.1016/j.patcog.2025.112205}
+}
+```
 
-Power outage: `RUN_AFTER_OUTAGE.bat` resumes checkpointed CLI experiments.
+## License
+
+[MIT](LICENSE).
